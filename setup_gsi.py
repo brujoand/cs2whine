@@ -1,0 +1,69 @@
+import os
+import sys
+import shutil
+
+GSI_FILENAME = "gamestate_integration_coach.cfg"
+
+STEAM_PATHS = [
+    os.path.expandvars(r"%ProgramFiles(x86)%\Steam"),
+    os.path.expandvars(r"%ProgramFiles%\Steam"),
+    r"C:\Steam",
+    r"D:\Steam",
+    r"D:\SteamLibrary",
+]
+
+CS2_CFG_RELATIVE = os.path.join(
+    "steamapps", "common", "Counter-Strike Global Offensive", "game", "csgo", "cfg"
+)
+
+
+def find_cs2_cfg_dir() -> str | None:
+    if sys.platform != "win32":
+        return None
+
+    for steam_path in STEAM_PATHS:
+        cfg_dir = os.path.join(steam_path, CS2_CFG_RELATIVE)
+        if os.path.isdir(cfg_dir):
+            return cfg_dir
+
+    libraryfolders = os.path.join(STEAM_PATHS[0], "steamapps", "libraryfolders.vdf")
+    if os.path.isfile(libraryfolders):
+        try:
+            with open(libraryfolders) as f:
+                for line in f:
+                    line = line.strip()
+                    if '"path"' in line:
+                        path = line.split('"')[3]
+                        cfg_dir = os.path.join(path, CS2_CFG_RELATIVE)
+                        if os.path.isdir(cfg_dir):
+                            return cfg_dir
+        except (IndexError, OSError):
+            pass
+
+    return None
+
+
+def install_gsi_config() -> bool:
+    cfg_dir = find_cs2_cfg_dir()
+    if not cfg_dir:
+        print("Could not find CS2 cfg directory.", flush=True)
+        print(f"Manually copy {GSI_FILENAME} to your CS2 cfg/ folder.", flush=True)
+        return False
+
+    if getattr(sys, "frozen", False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(__file__)
+    src = os.path.join(base, GSI_FILENAME)
+    dst = os.path.join(cfg_dir, GSI_FILENAME)
+
+    if os.path.isfile(dst):
+        return True
+
+    try:
+        shutil.copy2(src, dst)
+        print(f"Installed GSI config to {dst}", flush=True)
+        return True
+    except OSError as e:
+        print(f"Failed to install GSI config: {e}", flush=True)
+        return False
