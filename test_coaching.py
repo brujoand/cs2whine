@@ -1,12 +1,21 @@
 """Unit test for coaching engine — no server needed."""
 
 from coaching import CoachingEngine
-import time
 
 
-def make_payload(round_num, round_phase, health=100, deaths=0, kills=0,
-                 position="0, 0, 0", equip_value=3000, bomb_state="",
-                 bomb_position="", win_team="", team="CT"):
+def make_payload(
+    round_num,
+    round_phase,
+    health=100,
+    deaths=0,
+    kills=0,
+    position="0, 0, 0",
+    equip_value=3000,
+    bomb_state="",
+    bomb_position="",
+    win_team="",
+    team="CT",
+):
     p = {
         "map": {"name": "de_dust2", "phase": "live", "round": round_num},
         "player": {
@@ -53,12 +62,12 @@ def test_early_deaths():
         tips = coach.process(make_payload(rnd, "live", health=100))
         all_tips.extend(tips)
 
-        tips = coach.process(make_payload(rnd, "live", health=0, deaths=rnd,
-                                          position="1200, 300, 0"))
+        tips = coach.process(
+            make_payload(rnd, "live", health=0, deaths=rnd, position="1200, 300, 0")
+        )
         all_tips.extend(tips)
 
-        tips = coach.process(make_payload(rnd, "over", health=0, deaths=rnd,
-                                          win_team="T"))
+        tips = coach.process(make_payload(rnd, "over", health=0, deaths=rnd, win_team="T"))
         all_tips.extend(tips)
 
     if all_tips:
@@ -68,9 +77,11 @@ def test_early_deaths():
         print("  NO TIPS GENERATED — investigating...")
         print(f"  Rounds recorded: {len(coach.rounds)}")
         for r in coach.rounds:
-            print(f"    Round {r.round_num}: survived={r.survived}, "
-                  f"death_time={r.death_time}, death_pos={r.death_position}, "
-                  f"win={r.round_win}")
+            print(
+                f"    Round {r.round_num}: survived={r.survived}, "
+                f"death_time={r.death_time}, death_pos={r.death_position}, "
+                f"win={r.round_win}"
+            )
 
 
 def test_same_spot():
@@ -83,11 +94,11 @@ def test_same_spot():
         all_tips.extend(tips)
         tips = coach.process(make_payload(rnd, "live"))
         all_tips.extend(tips)
-        tips = coach.process(make_payload(rnd, "live", health=0, deaths=rnd,
-                                          position=f"800, 200, 0"))
+        tips = coach.process(
+            make_payload(rnd, "live", health=0, deaths=rnd, position="800, 200, 0")
+        )
         all_tips.extend(tips)
-        tips = coach.process(make_payload(rnd, "over", health=0, deaths=rnd,
-                                          win_team="T"))
+        tips = coach.process(make_payload(rnd, "over", health=0, deaths=rnd, win_team="T"))
         all_tips.extend(tips)
 
     if all_tips:
@@ -105,9 +116,9 @@ def test_bomb_pattern():
     for rnd in range(1, 8):
         tips = coach.process(make_payload(rnd, "freezetime"))
         all_tips.extend(tips)
-        tips = coach.process(make_payload(rnd, "live",
-                                          bomb_state="planted",
-                                          bomb_position="500, 100, 0"))
+        tips = coach.process(
+            make_payload(rnd, "live", bomb_state="planted", bomb_position="500, 100, 0")
+        )
         all_tips.extend(tips)
         tips = coach.process(make_payload(rnd, "over", win_team="T"))
         all_tips.extend(tips)

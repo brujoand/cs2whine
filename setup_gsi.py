@@ -1,6 +1,6 @@
 import os
-import sys
 import shutil
+import sys
 
 GSI_FILENAME = "gamestate_integration_coach.cfg"
 

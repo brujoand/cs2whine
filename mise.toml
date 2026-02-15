@@ -2,3 +2,5 @@
 node = "latest"
 python = "3.14"
 uv = "latest"
+gh = "latest"
+gitleaks = "latest"

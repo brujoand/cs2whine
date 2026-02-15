@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
-from collections import deque
 import time
+from collections import deque
+from dataclasses import dataclass
 
 
 @dataclass
@@ -52,8 +52,7 @@ class CoachingEngine:
 
         # new round started
         if round_phase == "freezetime" and (
-            self.current_round is None
-            or self.current_round.round_num != current_round_num
+            self.current_round is None or self.current_round.round_num != current_round_num
         ):
             if self.current_round:
                 self.rounds.append(self.current_round)
@@ -122,9 +121,7 @@ class CoachingEngine:
         flashed = player_state.get("flashed", 0)
         if flashed > 200 and "flashed_warning" not in self.emitted_tips:
             self.emitted_tips.add("flashed_warning")
-            recent_flashes = sum(
-                1 for r in list(self.rounds)[-3:] if not r.survived
-            )
+            recent_flashes = sum(1 for r in list(self.rounds)[-3:] if not r.survived)
             if recent_flashes >= 2:
                 tips.append(
                     "You keep getting flashed and dying. "
@@ -140,9 +137,7 @@ class CoachingEngine:
             return tips
 
         # early death pattern
-        early_deaths = [
-            r for r in recent[-3:] if r.death_time and r.death_time < 20
-        ]
+        early_deaths = [r for r in recent[-3:] if r.death_time and r.death_time < 20]
         if len(early_deaths) >= 2:
             tips.append(
                 f"You died early {len(early_deaths)} of the last "
@@ -172,8 +167,7 @@ class CoachingEngine:
         last = recent[-1]
         if last.equipment_value < 2000 and last.round_win is False:
             tips.append(
-                "Low equipment value last round. "
-                "Coordinate an eco or force buy with the team."
+                "Low equipment value last round. Coordinate an eco or force buy with the team."
             )
 
         # not getting kills
@@ -186,9 +180,7 @@ class CoachingEngine:
             )
 
         # bomb plant patterns (tracking enemy tendencies)
-        bomb_sites = [
-            r.bomb_planted_site for r in self.rounds if r.bomb_planted_site
-        ]
+        bomb_sites = [r.bomb_planted_site for r in self.rounds if r.bomb_planted_site]
         if len(bomb_sites) >= 4:
             last_4 = bomb_sites[-4:]
             from collections import Counter
@@ -204,9 +196,7 @@ class CoachingEngine:
 
         return tips
 
-    def _find_clusters(
-        self, positions: list[tuple], threshold: float
-    ) -> list[tuple]:
+    def _find_clusters(self, positions: list[tuple], threshold: float) -> list[tuple]:
         clusters = []
         for i, p1 in enumerate(positions):
             for p2 in positions[i + 1 :]:

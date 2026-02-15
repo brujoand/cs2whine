@@ -1,8 +1,8 @@
 """Simulate GSI payloads to test the coaching engine without CS2 running."""
 
-import requests
 import time
-import json
+
+import requests
 
 URL = "http://127.0.0.1:3001"
 
@@ -13,10 +13,23 @@ def send(payload):
     time.sleep(0.3)
 
 
-def base_payload(round_num, phase, health=100, money=4000, kills=0, deaths=0,
-                 equip_value=3000, position="0, 0, 0", round_phase="live",
-                 bomb_state="", bomb_position="", win_team="", flashed=0,
-                 round_killhs=0, team="CT"):
+def base_payload(
+    round_num,
+    phase,
+    health=100,
+    money=4000,
+    kills=0,
+    deaths=0,
+    equip_value=3000,
+    position="0, 0, 0",
+    round_phase="live",
+    bomb_state="",
+    bomb_position="",
+    win_team="",
+    flashed=0,
+    round_killhs=0,
+    team="CT",
+):
     p = {
         "provider": {"name": "Counter-Strike 2", "appid": 730},
         "map": {
@@ -72,12 +85,14 @@ def scenario_early_deaths():
         # die quickly
         time.sleep(0.3)
         print(f"--- Round {rnd} death ---")
-        send(base_payload(rnd, "live", round_phase="live", health=0,
-                          deaths=rnd, position="1200, 300, 0"))
+        send(
+            base_payload(
+                rnd, "live", round_phase="live", health=0, deaths=rnd, position="1200, 300, 0"
+            )
+        )
 
         print(f"--- Round {rnd} over (loss) ---")
-        send(base_payload(rnd, "live", round_phase="over", health=0,
-                          deaths=rnd, win_team="T"))
+        send(base_payload(rnd, "live", round_phase="over", health=0, deaths=rnd, win_team="T"))
 
 
 def scenario_same_spot_deaths():
@@ -94,11 +109,9 @@ def scenario_same_spot_deaths():
         # die at nearly the same position each time
         pos = f"{800 + rnd}, {200 + rnd}, 0"
         print(f"--- Round {rnd} death at {pos} ---")
-        send(base_payload(rnd, "live", round_phase="live", health=0,
-                          deaths=rnd, position=pos))
+        send(base_payload(rnd, "live", round_phase="live", health=0, deaths=rnd, position=pos))
 
-        send(base_payload(rnd, "live", round_phase="over", health=0,
-                          deaths=rnd, win_team="T"))
+        send(base_payload(rnd, "live", round_phase="over", health=0, deaths=rnd, win_team="T"))
 
 
 def scenario_bomb_site_pattern():
@@ -113,11 +126,13 @@ def scenario_bomb_site_pattern():
         send(base_payload(rnd, "live", round_phase="live"))
 
         # bomb planted on A (positive x) every time
-        send(base_payload(rnd, "live", round_phase="live",
-                          bomb_state="planted", bomb_position="500, 100, 0"))
+        send(
+            base_payload(
+                rnd, "live", round_phase="live", bomb_state="planted", bomb_position="500, 100, 0"
+            )
+        )
 
-        send(base_payload(rnd, "live", round_phase="over",
-                          win_team="T"))
+        send(base_payload(rnd, "live", round_phase="over", win_team="T"))
 
 
 if __name__ == "__main__":

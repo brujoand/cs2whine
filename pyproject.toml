@@ -1,5 +1,5 @@
 [project]
-name = "csthingy"
+name = "cs2whine"
 version = "0.1.0"
 description = "Real-time CS2 coaching via Game State Integration"
 requires-python = ">=3.12"
@@ -13,5 +13,14 @@ cs2coach = "gsi_server:main"
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.5.1",
     "pyinstaller>=6.19.0",
+    "ruff>=0.15.1",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]

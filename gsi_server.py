@@ -1,9 +1,11 @@
 import sys
+
 from flask import Flask, request
+
+import config
 from coaching import CoachingEngine
 from notify import Notifier
 from setup_gsi import install_gsi_config
-import config
 
 app = Flask(__name__)
 coach = CoachingEngine()
