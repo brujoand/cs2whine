@@ -6,6 +6,7 @@ import config
 from coaching import CoachingEngine
 from notify import Notifier
 from setup_gsi import install_gsi_config
+from updater import check_for_update
 
 app = Flask(__name__)
 coach = CoachingEngine()
@@ -29,6 +30,7 @@ def gsi_callback():
 
 
 def main():
+    check_for_update()
     install_gsi_config()
     port = cfg["port"]
     print(f"CS2 Coach listening on http://localhost:{port}", flush=True)
