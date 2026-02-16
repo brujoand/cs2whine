@@ -48,12 +48,22 @@ jobs:
           esac
 
           new_tag="v${major}.${minor}.${patch}"
+          new_version="${major}.${minor}.${patch}"
           echo "Bump: $bump -> $new_tag"
+
+          changelog=$(git log "${latest_tag}..HEAD" --pretty=format:"- %s" --no-merges)
+
+          sed -i "s/^version = .*/version = \"${new_version}\"/" pyproject.toml
+          sed -i "s/^__version__ = .*/__version__ = \"${new_version}\"/" updater.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml updater.py
+          git commit -m "chore: bump version to ${new_version} [skip ci]" || true
+          git push origin main
 
           git tag "$new_tag"
           git push origin "$new_tag"
-
-          changelog=$(git log "${latest_tag}..HEAD" --pretty=format:"- %s" --no-merges)
           gh release create "$new_tag" --title "$new_tag" --notes "$changelog"
           echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
 
