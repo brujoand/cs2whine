@@ -54,7 +54,12 @@ jobs:
 
           git tag "$new_tag"
           git push origin "$new_tag"
-          gh release create "$new_tag" --title "$new_tag" --notes "$changelog"
+          notes="${changelog}
+
+          ---
+
+          See [README](https://github.com/brujoand/cs2whine#readme) for setup and usage."
+          gh release create "$new_tag" --title "$new_tag" --notes "$notes"
           echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
 
   build-and-upload:
