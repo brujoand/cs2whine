@@ -10,3 +10,12 @@ repos:
     rev: v8.30.0
     hooks:
       - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: conventional-commit
+        name: Conventional commit message
+        entry: "sh -c 'head -1 \"$1\" | grep -qE \"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\(.+\\))?!?: .+\"' --"
+        language: system
+        stages: [commit-msg]
+        always_run: true
