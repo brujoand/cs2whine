@@ -1,9 +1,13 @@
 name: Build and Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,12 +16,26 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "name=${{ inputs.tag || github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
 
       - uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      - name: Inject version
+        shell: bash
+        run: |
+          version="${{ steps.tag.outputs.name }}"
+          version="${version#v}"
+          sed -i "s/^__version__ = .*/__version__ = \"${version}\"/" updater.py
 
       - name: Build exe
         run: uv run pyinstaller cs2coach.spec
@@ -28,8 +46,8 @@ jobs:
           name: cs2whine-windows
           path: dist/cs2coach.exe
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/cs2coach.exe
-          generate_release_notes: true
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "${{ steps.tag.outputs.name }}" dist/cs2coach.exe --clobber

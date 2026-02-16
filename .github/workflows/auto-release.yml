@@ -1,0 +1,63 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ['**']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.create.outputs.tag }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version bump and create release
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+
+          version="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+
+          bump="patch"
+          while IFS= read -r line; do
+            if echo "$line" | grep -qiE 'BREAKING CHANGE' || echo "$line" | grep -qE '^[a-z]+!:'; then
+              bump="major"
+              break
+            elif echo "$line" | grep -qE '^feat:' || echo "$line" | grep -qE '^feat\('; then
+              if [ "$bump" != "major" ]; then
+                bump="minor"
+              fi
+            fi
+          done < <(git log "${latest_tag}..HEAD" --pretty=format:"%s%n%b")
+
+          case "$bump" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          new_tag="v${major}.${minor}.${patch}"
+          echo "Bump: $bump -> $new_tag"
+
+          git tag "$new_tag"
+          git push origin "$new_tag"
+
+          changelog=$(git log "${latest_tag}..HEAD" --pretty=format:"- %s" --no-merges)
+          gh release create "$new_tag" --title "$new_tag" --notes "$changelog"
+          echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
+
+  build-and-upload:
+    needs: release
+    uses: ./.github/workflows/build.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
