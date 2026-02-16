@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.request
 from pathlib import Path
 
@@ -40,19 +41,24 @@ def _fetch_latest_release() -> dict | None:
         return json.loads(resp.read())
 
 
-def _find_asset_url(release: dict) -> str | None:
+def _find_asset(release: dict) -> tuple[str, int] | None:
     for asset in release.get("assets", []):
         if asset["name"] == ASSET_NAME:
-            return asset["browser_download_url"]
+            return asset["browser_download_url"], asset["size"]
     return None
 
 
-def _download(url: str, dest: Path):
+def _download(url: str, dest: Path, expected_size: int):
     req = urllib.request.Request(url)
     with urllib.request.urlopen(req, timeout=120) as resp:
         with open(dest, "wb") as f:
             while chunk := resp.read(65536):
                 f.write(chunk)
+
+    actual_size = dest.stat().st_size
+    if actual_size != expected_size:
+        dest.unlink()
+        raise ValueError(f"Download size mismatch: expected {expected_size}, got {actual_size}")
 
 
 def _replace_and_restart(new_exe: Path):
@@ -65,16 +71,24 @@ def _replace_and_restart(new_exe: Path):
     current.rename(old)
     new_exe.rename(current)
 
-    subprocess.Popen([str(current)] + sys.argv[1:])
+    try:
+        proc = subprocess.Popen([str(current)] + sys.argv[1:])
+        try:
+            proc.wait(timeout=5)
+            if proc.returncode is not None and proc.returncode != 0:
+                raise RuntimeError(f"New process exited with code {proc.returncode}")
+        except subprocess.TimeoutExpired:
+            pass
+    except Exception:
+        print("New version failed to start, rolling back...", flush=True)
+        current.unlink(missing_ok=True)
+        old.rename(current)
+        return
+
     sys.exit(0)
 
 
-def check_for_update():
-    _cleanup_old()
-
-    if not _is_frozen():
-        return
-
+def _do_update():
     try:
         release = _fetch_latest_release()
         if not release:
@@ -87,17 +101,28 @@ def check_for_update():
         if remote_version <= local_version:
             return
 
-        asset_url = _find_asset_url(release)
-        if not asset_url:
+        asset = _find_asset(release)
+        if not asset:
             return
+        asset_url, expected_size = asset
 
-        print(f"Updating from {__version__} to {tag}...", flush=True)
+        print(f"Updating to {tag} in the background...", flush=True)
 
         tmp_dir = Path(tempfile.mkdtemp())
         tmp_exe = tmp_dir / ASSET_NAME
-        _download(asset_url, tmp_exe)
+        _download(asset_url, tmp_exe, expected_size)
 
+        print("Update downloaded. Restarting...", flush=True)
         _replace_and_restart(tmp_exe)
 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Update check failed: {e}", flush=True)
+
+
+def check_for_update():
+    _cleanup_old()
+
+    if not _is_frozen():
+        return
+
+    threading.Thread(target=_do_update, daemon=True).start()
