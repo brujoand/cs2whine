@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from flask import Flask, request
@@ -36,6 +37,7 @@ def main():
     print(f"CS2 Coach listening on http://localhost:{port}", flush=True)
     print("Start CS2 and play a match. Tips will appear as notifications.", flush=True)
     sys.stdout.reconfigure(line_buffering=True)
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
     app.run(host="127.0.0.1", port=port, debug=False)
 
 
