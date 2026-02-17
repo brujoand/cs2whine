@@ -5,6 +5,7 @@ description = "Real-time CS2 coaching via Game State Integration"
 requires-python = ">=3.12"
 dependencies = [
     "flask>=3.1.2",
+    "windows-toasts>=1.2.0; sys_platform == 'win32'",
 ]
 
 [project.scripts]
