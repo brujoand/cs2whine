@@ -31,11 +31,17 @@ jobs:
         run: uv sync --group dev
 
       - name: Inject version
-        shell: bash
+        shell: python
         run: |
-          version="${{ steps.tag.outputs.name }}"
-          version="${version#v}"
-          sed -i "s/^__version__ = .*/__version__ = \"${version}\"/" updater.py
+          import re
+          from pathlib import Path
+          tag = "${{ steps.tag.outputs.name }}"
+          version = tag.lstrip("v")
+          p = Path("updater.py")
+          text = p.read_text()
+          text = re.sub(r'^__version__ = .*', f'__version__ = "{version}"', text, flags=re.MULTILINE)
+          p.write_text(text)
+          print(f"Injected version {version}")
 
       - name: Build exe
         run: uv run pyinstaller cs2coach.spec
