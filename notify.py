@@ -95,6 +95,9 @@ class Notifier:
 
     def _show(self, body: str):
         if sys.platform == "win32":
-            _show_windows_toast("CS2 Coach", body[:256])
+            try:
+                _show_windows_toast("CS2 Coach", body[:256])
+            except Exception as e:
+                print(f"\n[TOAST FAILED] {e}", flush=True)
         else:
-            print(f"[NOTIFICATION] {body}", flush=True)
+            print(f"\n[NOTIFICATION] {body}", flush=True)
