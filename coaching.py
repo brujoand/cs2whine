@@ -1,6 +1,10 @@
-import time
 from collections import deque
 from dataclasses import dataclass
+
+DEFUSE_TIME_KIT = 5.0
+DEFUSE_TIME_NO_KIT = 10.0
+KIT_COST = 400
+TIME_PRESSURE_THRESHOLD = 15.0
 
 
 @dataclass
@@ -23,9 +27,9 @@ class CoachingEngine:
         self.rounds: deque[RoundSnapshot] = deque(maxlen=30)
         self.current_round: RoundSnapshot | None = None
         self.prev_state: dict = {}
-        self.round_start_time: float = 0
         self.match_map: str = ""
         self.my_team: str = ""
+        self.round_duration: float = 115.0
         self.emitted_tips: set = set()
 
     def process(self, data: dict) -> list[str]:
@@ -37,6 +41,7 @@ class CoachingEngine:
         match_stats = player.get("match_stats", {})
         round_data = data.get("round", {})
         bomb = data.get("bomb", {})
+        phase_countdowns = data.get("phase_countdowns", {})
 
         if not player or not map_data:
             return tips
@@ -58,20 +63,23 @@ class CoachingEngine:
                 self.rounds.append(self.current_round)
                 tips.extend(self._analyze_on_round_end())
             self.current_round = RoundSnapshot(round_num=current_round_num)
-            self.round_start_time = time.time()
             self.emitted_tips.clear()
 
         if not self.current_round:
             self.current_round = RoundSnapshot(round_num=current_round_num)
-            self.round_start_time = time.time()
 
         self.current_round.phase = round_phase
+
+        phase_time_remaining = phase_countdowns.get("phase_ends_in", None)
 
         # track deaths
         prev_health = self.prev_state.get("health", 100)
         cur_health = player_state.get("health", 100)
         if prev_health > 0 and cur_health == 0:
-            elapsed = time.time() - self.round_start_time
+            if phase_time_remaining is not None:
+                elapsed = self.round_duration - phase_time_remaining
+            else:
+                elapsed = None
             pos = data.get("player", {}).get("position", "")
             self.current_round.death_time = elapsed
             self.current_round.survived = False
@@ -97,9 +105,20 @@ class CoachingEngine:
             bomb_pos = bomb.get("position", "")
             self.current_round.bomb_planted_site = self._pos_to_site(bomb_pos)
 
+        # defuse kit reminder (freezetime or live, CT side)
+        if (
+            round_phase in ("freezetime", "live")
+            and self.my_team == "CT"
+            and not player_state.get("defusekit", False)
+            and player_state.get("money", 0) >= KIT_COST
+            and "kit_reminder" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("kit_reminder")
+            tips.append("You can afford a kit — buy one.")
+
         # live tips (during round)
         if round_phase == "live":
-            tips.extend(self._live_tips(player_state, match_stats))
+            tips.extend(self._live_tips(player_state, match_stats, bomb, phase_time_remaining))
 
         # round over
         if round_phase == "over":
@@ -115,7 +134,13 @@ class CoachingEngine:
 
         return tips
 
-    def _live_tips(self, player_state: dict, match_stats: dict) -> list[str]:
+    def _live_tips(
+        self,
+        player_state: dict,
+        match_stats: dict,
+        bomb: dict,
+        phase_time_remaining: float | None,
+    ) -> list[str]:
         tips = []
 
         flashed = player_state.get("flashed", 0)
@@ -128,6 +153,33 @@ class CoachingEngine:
                     "Try holding a different angle or playing further back."
                 )
 
+        # too late to defuse
+        bomb_state = bomb.get("state", "")
+        bomb_countdown = bomb.get("countdown", None)
+        if (
+            bomb_state == "planted"
+            and bomb_countdown is not None
+            and self.my_team == "CT"
+            and player_state.get("health", 0) > 0
+            and "defuse_too_late" not in self.emitted_tips
+        ):
+            has_kit = player_state.get("defusekit", False)
+            required = DEFUSE_TIME_KIT if has_kit else DEFUSE_TIME_NO_KIT
+            if bomb_countdown < required:
+                self.emitted_tips.add("defuse_too_late")
+                tips.append("Too late to defuse — save your weapon.")
+
+        # time pressure (T side, bomb not planted)
+        if (
+            phase_time_remaining is not None
+            and phase_time_remaining < TIME_PRESSURE_THRESHOLD
+            and self.my_team == "T"
+            and bomb_state != "planted"
+            and "time_pressure" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("time_pressure")
+            tips.append("Under 15s — commit to a site or save.")
+
         return tips
 
     def _analyze_on_round_end(self) -> list[str]:
@@ -137,7 +189,7 @@ class CoachingEngine:
             return tips
 
         # early death pattern
-        early_deaths = [r for r in recent[-3:] if r.death_time and r.death_time < 20]
+        early_deaths = [r for r in recent[-3:] if r.death_time is not None and r.death_time < 20]
         if len(early_deaths) >= 2:
             tips.append(
                 f"You died early {len(early_deaths)} of the last "
