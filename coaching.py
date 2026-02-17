@@ -1,3 +1,4 @@
+import time
 from collections import deque
 from dataclasses import dataclass
 
@@ -10,6 +11,7 @@ SAVE_EQUIP_THRESHOLD = 500
 FORCE_BUY_MONEY_THRESHOLD = 3500
 FORCE_BUY_EQUIP_THRESHOLD = 2000
 FREEZETIME_BUY_WINDOW = 10.0
+LOW_HP_DELAY = 2.0
 
 
 @dataclass
@@ -39,6 +41,7 @@ class CoachingEngine:
         self.emitted_tips: set = set()
         self._last_pattern: dict = {}
         self.pending_round_stats: str | None = None
+        self._low_hp_since: float | None = None
 
     def process(self, data: dict) -> list[str]:
         tips = []
@@ -192,10 +195,16 @@ class CoachingEngine:
             label = labels.get(round_kills, f"{round_kills}K")
             tips.append(f"{label}! Nice.")
 
-        # low health warning
-        if 0 < cur_health <= LOW_HP_THRESHOLD and "low_hp" not in self.emitted_tips:
-            self.emitted_tips.add("low_hp")
-            tips.append(f"{cur_health}hp — hold an angle, don't push.")
+        # low health warning (only if alive at low hp for a sustained period)
+        if 0 < cur_health <= LOW_HP_THRESHOLD:
+            now = time.monotonic()
+            if self._low_hp_since is None:
+                self._low_hp_since = now
+            elif now - self._low_hp_since >= LOW_HP_DELAY and "low_hp" not in self.emitted_tips:
+                self.emitted_tips.add("low_hp")
+                tips.append(f"{cur_health}hp — hold an angle, don't push.")
+        else:
+            self._low_hp_since = None
 
         # premature save (T side, lots of time left, alive but no gun)
         if (
