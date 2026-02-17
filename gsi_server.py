@@ -16,11 +16,28 @@ cfg = config.load()
 notifier = Notifier(rate_limit=cfg.get("notification_rate_limit", 8.0))
 
 
+request_count = 0
+
+
 @app.route("/", methods=["POST"])
 def gsi_callback():
+    global request_count
     data = request.get_json(silent=True)
     if not data:
         return "no data", 400
+
+    request_count += 1
+    if request_count == 1:
+        print("Receiving GSI data from CS2.", flush=True)
+
+    map_data = data.get("map", {})
+    round_data = data.get("round", {})
+    player = data.get("player", {})
+    round_num = map_data.get("round", "?")
+    phase = round_data.get("phase", map_data.get("phase", "?"))
+    team = player.get("team", "?")
+    health = player.get("state", {}).get("health", "?")
+    print(f"\r[R{round_num}] {phase} | {team} | hp:{health}", end="", flush=True)
 
     tips = coach.process(data)
     for tip in tips:
