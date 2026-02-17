@@ -55,6 +55,11 @@ class CoachingEngine:
         if not player or not map_data:
             return tips
 
+        provider_steam = data.get("provider", {}).get("steamid", "")
+        player_steam = player.get("steamid", "")
+        if provider_steam and player_steam and provider_steam != player_steam:
+            return tips
+
         current_round_num = map_data.get("round", 0)
         round_phase = round_data.get("phase", "")
         map_phase = map_data.get("phase", "")
