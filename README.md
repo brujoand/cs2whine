@@ -13,7 +13,7 @@ Tracks your gameplay and alerts you about:
 
 ## Setup
 
-1. Download `cs2coach.exe` from the [latest release](https://github.com/brujoand/cs2whine/releases/latest)
+1. Download `cs2coach-<version>.exe` from the [latest release](https://github.com/brujoand/cs2whine/releases/latest)
 2. Run it. It automatically installs the GSI config into your CS2 `cfg/` folder
 3. Launch CS2 and play. Tips appear as Windows notifications
 
