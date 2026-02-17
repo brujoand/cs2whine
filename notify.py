@@ -24,32 +24,38 @@ class Notifier:
 
     def _drain(self):
         while True:
-            batch = []
-            with self._lock:
-                while self.queue:
-                    batch.append(self.queue.popleft())
+            try:
+                batch = []
+                with self._lock:
+                    while self.queue:
+                        batch.append(self.queue.popleft())
 
-            if batch:
-                now = time.time()
-                wait = self.rate_limit - (now - self.last_sent)
-                if wait > 0:
-                    time.sleep(wait)
+                if batch:
+                    now = time.time()
+                    wait = self.rate_limit - (now - self.last_sent)
+                    if wait > 0:
+                        time.sleep(wait)
 
-                msg = "\n".join(batch)
-                self._show(msg)
-                self.last_sent = time.time()
+                    msg = "\n".join(batch)
+                    self._show(msg)
+                    self.last_sent = time.time()
+            except Exception as e:
+                print(f"[NOTIFICATION ERROR] drain: {e}", flush=True)
 
             time.sleep(0.5)
 
     def _show(self, body: str):
         if sys.platform == "win32":
-            toast = Notification(
-                app_id=APP_NAME,
-                title="CS2 Coach",
-                msg=body[:256],
-                duration="short",
-            )
-            toast.set_audio(audio.Default, loop=False)
-            toast.show()
+            try:
+                toast = Notification(
+                    app_id=APP_NAME,
+                    title="CS2 Coach",
+                    msg=body[:256],
+                    duration="short",
+                )
+                toast.set_audio(audio.Default, loop=False)
+                toast.show()
+            except Exception as e:
+                print(f"[NOTIFICATION ERROR] {e}", flush=True)
         else:
             print(f"[NOTIFICATION] {body}", flush=True)
