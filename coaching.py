@@ -90,8 +90,8 @@ class CoachingEngine:
                 except (ValueError, AttributeError):
                     pass
 
-        # track kills
-        self.current_round.kills = match_stats.get("kills", 0)
+        # track kills (per-round fields from player_state)
+        self.current_round.kills = player_state.get("round_kills", 0)
         self.current_round.hs_kills = player_state.get("round_killhs", 0)
 
         # track economy
