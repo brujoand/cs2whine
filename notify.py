@@ -7,11 +7,13 @@ APP_NAME = "cs2whine"
 
 
 def _show_windows_toast(title: str, msg: str):
-    from windows_toasts import Toast, WindowsToaster
+    from windows_toasts import Toast, ToastAudio, WindowsToaster
 
     toaster = WindowsToaster(title)
     toast = Toast()
     toast.text_fields = [msg]
+    toast.audio = ToastAudio(silent=True)
+    toast.on_dismissed = lambda _: toaster.remove_toast(toast)
     toaster.show_toast(toast)
 
 
