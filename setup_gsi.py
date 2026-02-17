@@ -58,7 +58,15 @@ def install_gsi_config() -> bool:
     dst = os.path.join(cfg_dir, GSI_FILENAME)
 
     if os.path.isfile(dst):
-        return True
+        try:
+            with open(src, "rb") as f:
+                src_content = f.read()
+            with open(dst, "rb") as f:
+                dst_content = f.read()
+            if src_content == dst_content:
+                return True
+        except OSError:
+            pass
 
     try:
         shutil.copy2(src, dst)
