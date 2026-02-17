@@ -51,7 +51,7 @@ def main():
     check_for_update()
     install_gsi_config()
     port = cfg["port"]
-    print(f"CS2 Coach listening on http://localhost:{port}", flush=True)
+    print(f"cs2whine listening on http://localhost:{port}", flush=True)
     print("Start CS2 and play a match. Tips will appear as notifications.", flush=True)
     sys.stdout.reconfigure(line_buffering=True)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)

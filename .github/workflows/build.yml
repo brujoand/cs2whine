@@ -44,22 +44,22 @@ jobs:
           print(f"Injected version {version}")
 
       - name: Build exe
-        run: uv run pyinstaller cs2coach.spec
+        run: uv run pyinstaller cs2whine.spec
 
       - name: Rename with version
         shell: bash
         run: |
           version="${{ steps.tag.outputs.name }}"
-          mv dist/cs2coach.exe "dist/cs2coach-${version}.exe"
+          mv dist/cs2whine.exe "dist/cs2whine-${version}.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cs2whine-windows
-          path: dist/cs2coach-*.exe
+          path: dist/cs2whine-*.exe
 
       - name: Upload release asset
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${{ steps.tag.outputs.name }}" dist/cs2coach-*.exe --clobber
+        run: gh release upload "${{ steps.tag.outputs.name }}" dist/cs2whine-*.exe --clobber

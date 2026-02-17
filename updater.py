@@ -45,7 +45,7 @@ def _do_update_check():
             from notify import _show_windows_toast
 
             _show_windows_toast(
-                "CS2 Coach", f"Update available: {tag}\nVisit GitHub releases to download."
+                "cs2whine", f"Update available: {tag}\nVisit GitHub releases to download."
             )
 
     except Exception as e:
