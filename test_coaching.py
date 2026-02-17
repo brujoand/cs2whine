@@ -264,9 +264,14 @@ def test_low_health_warning():
     print("\n=== Test: Low health warning ===")
     coach = CoachingEngine()
     coach.process(make_payload(1, "freezetime", team="T"))
+    # first tick: starts the timer, no tip yet
+    tips = coach.process(make_payload(1, "live", team="T", health=30))
+    assert not any("hold an angle" in t for t in tips), f"Should not warn on first tick: {tips}"
+    # simulate delay having passed
+    coach._low_hp_since -= 3.0
     tips = coach.process(make_payload(1, "live", team="T", health=30))
     assert any("hold an angle" in t for t in tips), f"Expected low hp tip, got: {tips}"
-    print("  PASS: low hp warning at 30hp")
+    print("  PASS: low hp warning at 30hp after delay")
 
 
 def test_no_low_health_above_threshold():
