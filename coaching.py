@@ -5,6 +5,11 @@ DEFUSE_TIME_KIT = 5.0
 DEFUSE_TIME_NO_KIT = 10.0
 KIT_COST = 400
 TIME_PRESSURE_THRESHOLD = 15.0
+LOW_HP_THRESHOLD = 35
+SAVE_TIME_THRESHOLD = 60.0
+SAVE_EQUIP_THRESHOLD = 500
+FORCE_BUY_MONEY_THRESHOLD = 3500
+FORCE_BUY_EQUIP_THRESHOLD = 2000
 
 
 @dataclass
@@ -16,6 +21,7 @@ class RoundSnapshot:
     kills: int = 0
     hs_kills: int = 0
     equipment_value: int = 0
+    armor: int = 0
     team_money: int = 0
     survived: bool = True
     bomb_planted_site: str | None = None
@@ -51,7 +57,10 @@ class CoachingEngine:
         round_phase = round_data.get("phase", "")
         map_phase = map_data.get("phase", "")
         self.match_map = map_data.get("name", "")
-        self.my_team = player.get("team", "")
+        new_team = player.get("team", "")
+        if new_team != self.my_team:
+            self._last_pattern.clear()
+        self.my_team = new_team
 
         if map_phase == "warmup":
             return tips
@@ -97,6 +106,7 @@ class CoachingEngine:
 
         # track economy
         self.current_round.equipment_value = player_state.get("equip_value", 0)
+        self.current_round.armor = player_state.get("armor", 0)
         money = player_state.get("money", 0)
         self.current_round.team_money = money
 
@@ -106,16 +116,43 @@ class CoachingEngine:
             bomb_pos = bomb.get("position", "")
             self.current_round.bomb_planted_site = self._pos_to_site(bomb_pos)
 
-        # defuse kit reminder (freezetime or live, CT side)
+        # defuse kit reminder (once per half)
         if (
             round_phase in ("freezetime", "live")
             and self.my_team == "CT"
             and not player_state.get("defusekit", False)
             and player_state.get("money", 0) >= KIT_COST
-            and "kit_reminder" not in self.emitted_tips
+            and "kit_reminder" not in self._last_pattern
         ):
-            self.emitted_tips.add("kit_reminder")
+            self._last_pattern["kit_reminder"] = 1
             tips.append("You can afford a kit — buy one.")
+
+        # freezetime tips
+        if round_phase == "freezetime" and self.rounds:
+            last_round = self.rounds[-1]
+
+            # eco discipline: force buying when you should be saving after a loss
+            lost_consecutive = sum(
+                1 for r in reversed(list(self.rounds)[-3:]) if r.round_win is False
+            )
+            if (
+                last_round.round_win is False
+                and lost_consecutive >= 2
+                and self.current_round.equipment_value > FORCE_BUY_EQUIP_THRESHOLD
+                and "eco_discipline" not in self._last_pattern
+            ):
+                self._last_pattern["eco_discipline"] = 1
+                tips.append("Force buy while team is saving — you're breaking the eco.")
+
+            # no armor on anti-eco (round after a win)
+            if (
+                last_round.round_win is True
+                and self.current_round.armor == 0
+                and money >= 650
+                and "no_armor" not in self.emitted_tips
+            ):
+                self.emitted_tips.add("no_armor")
+                tips.append("No armor — buy helmet before upgrading your weapon.")
 
         # live tips (during round)
         if round_phase == "live":
@@ -143,6 +180,27 @@ class CoachingEngine:
         phase_time_remaining: float | None,
     ) -> list[str]:
         tips = []
+
+        cur_health = player_state.get("health", 100)
+
+        # low health warning
+        if 0 < cur_health <= LOW_HP_THRESHOLD and "low_hp" not in self.emitted_tips:
+            self.emitted_tips.add("low_hp")
+            tips.append(f"{cur_health}hp — hold an angle, don't push.")
+
+        # premature save (T side, lots of time left, alive but no gun)
+        if (
+            phase_time_remaining is not None
+            and phase_time_remaining > SAVE_TIME_THRESHOLD
+            and self.my_team == "T"
+            and cur_health > 0
+            and player_state.get("equip_value", 0) < SAVE_EQUIP_THRESHOLD
+            and bomb.get("state", "") != "planted"
+            and "premature_save" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("premature_save")
+            secs = int(phase_time_remaining)
+            tips.append(f"{secs}s left and you're saving — your gun could still win this.")
 
         flashed = player_state.get("flashed", 0)
         if flashed > 200 and "flashed_warning" not in self.emitted_tips:
@@ -247,6 +305,7 @@ class CoachingEngine:
             )
         else:
             self._reset_pattern("loss_streak")
+            self._reset_pattern("eco_discipline")
 
         # eco awareness
         last = recent[-1]
@@ -290,6 +349,23 @@ class CoachingEngine:
                 self._reset_pattern("bomb_site")
         else:
             self._reset_pattern("bomb_site")
+
+        # untraded deaths (consecutive rounds dying with 0 kills)
+        consecutive_untraded = 0
+        for r in reversed(recent):
+            if not r.survived and r.kills == 0:
+                consecutive_untraded += 1
+            else:
+                break
+        if consecutive_untraded >= 2:
+            self._emit_pattern(
+                "untraded",
+                consecutive_untraded,
+                "Dying untraded again — wait for support before peeking.",
+                tips,
+            )
+        else:
+            self._reset_pattern("untraded")
 
         return tips
 

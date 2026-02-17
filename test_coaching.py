@@ -284,6 +284,101 @@ def test_no_time_pressure_ct_side():
     print("  PASS: no time pressure on CT side")
 
 
+def test_low_health_warning():
+    print("\n=== Test: Low health warning ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="T"))
+    tips = coach.process(make_payload(1, "live", team="T", health=30))
+    assert any("hold an angle" in t for t in tips), f"Expected low hp tip, got: {tips}"
+    print("  PASS: low hp warning at 30hp")
+
+
+def test_no_low_health_above_threshold():
+    print("\n=== Test: No low health warning above threshold ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="T"))
+    tips = coach.process(make_payload(1, "live", team="T", health=50))
+    assert not any("hold an angle" in t for t in tips), f"Should not warn at 50hp: {tips}"
+    print("  PASS: no warning at 50hp")
+
+
+def test_premature_save():
+    print("\n=== Test: Premature save ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="T"))
+    tips = coach.process(make_payload(1, "live", team="T", equip_value=200, phase_ends_in=70.0))
+    assert any("saving" in t for t in tips), f"Expected save tip, got: {tips}"
+    print("  PASS: premature save warning with 70s left")
+
+
+def test_no_premature_save_late():
+    print("\n=== Test: No premature save when time is low ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="T"))
+    tips = coach.process(make_payload(1, "live", team="T", equip_value=200, phase_ends_in=30.0))
+    assert not any("saving" in t for t in tips), f"Should not warn at 30s: {tips}"
+    print("  PASS: no save warning at 30s")
+
+
+def test_no_armor_anti_eco():
+    print("\n=== Test: No armor on anti-eco ===")
+    coach = CoachingEngine()
+    # round 1: win
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
+    # round 2: freezetime, no armor
+    tips = coach.process(make_payload(2, "freezetime", team="CT", defusekit=True, money=4000))
+    # the test payload has armor=100 by default in player_state, need to override
+    # let me send a payload with armor=0
+    coach2 = CoachingEngine()
+    coach2.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach2.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach2.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
+    p = make_payload(2, "freezetime", team="CT", defusekit=True, money=4000)
+    p["player"]["state"]["armor"] = 0
+    tips = coach2.process(p)
+    assert any("armor" in t.lower() for t in tips), f"Expected armor tip, got: {tips}"
+    print("  PASS: no armor warning on anti-eco")
+
+
+def test_eco_discipline():
+    print("\n=== Test: Eco discipline ===")
+    coach = CoachingEngine()
+    # lose 2 rounds
+    for rnd in range(1, 3):
+        coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "live", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "over", team="CT", win_team="T", defusekit=True))
+    # round 3: force buy (high equip value after losses)
+    tips = coach.process(
+        make_payload(3, "freezetime", team="CT", defusekit=True, money=4000, equip_value=3000)
+    )
+    assert any("eco" in t.lower() for t in tips), f"Expected eco tip, got: {tips}"
+    print("  PASS: eco discipline warning on force buy")
+
+
+def test_untraded_deaths():
+    print("\n=== Test: Untraded deaths ===")
+    coach = CoachingEngine()
+    all_tips = []
+    for rnd in range(1, 5):
+        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
+        all_tips.extend(tips)
+        tips = coach.process(make_payload(rnd, "live", defusekit=True))
+        all_tips.extend(tips)
+        tips = coach.process(
+            make_payload(rnd, "live", health=0, deaths=rnd, defusekit=True, phase_ends_in=100.0)
+        )
+        all_tips.extend(tips)
+        tips = coach.process(
+            make_payload(rnd, "over", health=0, deaths=rnd, win_team="T", defusekit=True)
+        )
+        all_tips.extend(tips)
+    assert any("untraded" in t.lower() for t in all_tips), f"Expected untraded tip, got: {all_tips}"
+    print("  PASS: untraded death warning")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -297,3 +392,10 @@ if __name__ == "__main__":
     test_time_pressure()
     test_no_time_pressure_when_bomb_planted()
     test_no_time_pressure_ct_side()
+    test_low_health_warning()
+    test_no_low_health_above_threshold()
+    test_premature_save()
+    test_no_premature_save_late()
+    test_no_armor_anti_eco()
+    test_eco_discipline()
+    test_untraded_deaths()
