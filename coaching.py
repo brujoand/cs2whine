@@ -10,6 +10,7 @@ SAVE_TIME_THRESHOLD = 60.0
 SAVE_EQUIP_THRESHOLD = 500
 FORCE_BUY_MONEY_THRESHOLD = 3500
 FORCE_BUY_EQUIP_THRESHOLD = 2000
+FREEZETIME_BUY_WINDOW = 10.0
 
 
 @dataclass
@@ -38,6 +39,7 @@ class CoachingEngine:
         self.round_duration: float = 115.0
         self.emitted_tips: set = set()
         self._last_pattern: dict = {}
+        self.pending_round_stats: str | None = None
 
     def process(self, data: dict) -> list[str]:
         tips = []
@@ -72,6 +74,7 @@ class CoachingEngine:
             if self.current_round:
                 self.rounds.append(self.current_round)
                 tips.extend(self._analyze_on_round_end())
+                self.pending_round_stats = self._format_round_stats(match_stats)
             self.current_round = RoundSnapshot(round_num=current_round_num)
             self.emitted_tips.clear()
 
@@ -116,9 +119,15 @@ class CoachingEngine:
             bomb_pos = bomb.get("position", "")
             self.current_round.bomb_planted_site = self._pos_to_site(bomb_pos)
 
+        late_freezetime = (
+            round_phase == "freezetime"
+            and phase_time_remaining is not None
+            and phase_time_remaining < FREEZETIME_BUY_WINDOW
+        )
+
         # defuse kit reminder (once per half)
         if (
-            round_phase in ("freezetime", "live")
+            (late_freezetime or round_phase == "live")
             and self.my_team == "CT"
             and not player_state.get("defusekit", False)
             and player_state.get("money", 0) >= KIT_COST
@@ -127,8 +136,8 @@ class CoachingEngine:
             self._last_pattern["kit_reminder"] = 1
             tips.append("You can afford a kit — buy one.")
 
-        # freezetime tips
-        if round_phase == "freezetime" and self.rounds:
+        # freezetime tips (only after player has had time to buy)
+        if late_freezetime and self.rounds:
             last_round = self.rounds[-1]
 
             # eco discipline: force buying when you should be saving after a loss
@@ -377,6 +386,29 @@ class CoachingEngine:
                 if dist < threshold:
                     clusters.append((p1, p2))
         return clusters
+
+    def _format_round_stats(self, match_stats: dict) -> str:
+        last = self.rounds[-1]
+        kills = match_stats.get("kills", 0)
+        assists = match_stats.get("assists", 0)
+        deaths = match_stats.get("deaths", 0)
+        score = match_stats.get("score", 0)
+        mvps = match_stats.get("mvps", 0)
+
+        total_kills = sum(r.kills for r in self.rounds)
+        total_hs = sum(r.hs_kills for r in self.rounds)
+        hs_pct = (total_hs / total_kills * 100) if total_kills > 0 else 0
+
+        result = "W" if last.round_win else "L" if last.round_win is False else "?"
+        survived = "alive" if last.survived else "dead"
+
+        parts = [
+            f"R{last.round_num} {result}",
+            f"{last.kills}K/{last.hs_kills}HS ({survived})",
+            f"Match: {kills}/{assists}/{deaths} ({hs_pct:.0f}% HS)",
+            f"Score:{score} MVPs:{mvps}",
+        ]
+        return " | ".join(parts)
 
     def _pos_to_site(self, pos_str: str) -> str | None:
         if not pos_str:

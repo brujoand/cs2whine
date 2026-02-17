@@ -40,6 +40,11 @@ def gsi_callback():
     print(f"\r[R{round_num}] {phase} | {team} | hp:{health}", end="", flush=True)
 
     tips = coach.process(data)
+
+    if coach.pending_round_stats:
+        print(f"\n--- {coach.pending_round_stats}", flush=True)
+        coach.pending_round_stats = None
+
     for tip in tips:
         print(f"\n>>> {tip}", flush=True)
         notifier.send(tip)

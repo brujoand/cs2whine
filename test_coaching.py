@@ -227,7 +227,9 @@ def test_defuse_too_late_with_kit():
 def test_kit_reminder():
     print("\n=== Test: Kit reminder ===")
     coach = CoachingEngine()
-    tips = coach.process(make_payload(1, "freezetime", team="CT", defusekit=False, money=4000))
+    tips = coach.process(
+        make_payload(1, "freezetime", team="CT", defusekit=False, money=4000, phase_ends_in=5.0)
+    )
     assert any("kit" in t.lower() for t in tips), f"Expected kit reminder, got: {tips}"
     print("  PASS: kit reminder triggered")
 
@@ -335,7 +337,7 @@ def test_no_armor_anti_eco():
     coach2.process(make_payload(1, "freezetime", team="CT", defusekit=True))
     coach2.process(make_payload(1, "live", team="CT", defusekit=True))
     coach2.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
-    p = make_payload(2, "freezetime", team="CT", defusekit=True, money=4000)
+    p = make_payload(2, "freezetime", team="CT", defusekit=True, money=4000, phase_ends_in=5.0)
     p["player"]["state"]["armor"] = 0
     tips = coach2.process(p)
     assert any("armor" in t.lower() for t in tips), f"Expected armor tip, got: {tips}"
@@ -352,7 +354,15 @@ def test_eco_discipline():
         coach.process(make_payload(rnd, "over", team="CT", win_team="T", defusekit=True))
     # round 3: force buy (high equip value after losses)
     tips = coach.process(
-        make_payload(3, "freezetime", team="CT", defusekit=True, money=4000, equip_value=3000)
+        make_payload(
+            3,
+            "freezetime",
+            team="CT",
+            defusekit=True,
+            money=4000,
+            equip_value=3000,
+            phase_ends_in=5.0,
+        )
     )
     assert any("eco" in t.lower() for t in tips), f"Expected eco tip, got: {tips}"
     print("  PASS: eco discipline warning on force buy")
