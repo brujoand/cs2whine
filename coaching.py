@@ -184,6 +184,13 @@ class CoachingEngine:
         tips = []
 
         cur_health = player_state.get("health", 100)
+        round_kills = player_state.get("round_kills", 0)
+
+        if round_kills >= 3 and f"multikill_{round_kills}" not in self.emitted_tips:
+            self.emitted_tips.add(f"multikill_{round_kills}")
+            labels = {3: "Triple kill", 4: "Quad kill", 5: "ACE"}
+            label = labels.get(round_kills, f"{round_kills}K")
+            tips.append(f"{label}! Nice.")
 
         # low health warning
         if 0 < cur_health <= LOW_HP_THRESHOLD and "low_hp" not in self.emitted_tips:
@@ -257,6 +264,25 @@ class CoachingEngine:
         recent = list(self.rounds)[-5:]
         if len(recent) < 2:
             return tips
+
+        last = recent[-1]
+
+        # positive: win streak
+        recent_wins = [r for r in recent[-3:] if r.round_win is True]
+        if len(recent_wins) >= 3:
+            self._emit_pattern(
+                "win_streak", len(recent_wins), "3 wins in a row — keep it up.", tips
+            )
+
+        # positive: consistent fragger
+        high_kill_rounds = [r for r in recent[-3:] if r.kills >= 2]
+        if len(high_kill_rounds) >= 3:
+            self._emit_pattern(
+                "hot_streak",
+                len(high_kill_rounds),
+                "2+ kills every round for the last 3 — you're on fire.",
+                tips,
+            )
 
         # early death pattern
         early_deaths = [r for r in recent[-3:] if r.death_time is not None and r.death_time < 20]
