@@ -14,7 +14,7 @@ Real-time CS2 coaching via Game State Integration. Runs as a Windows exe (PyInst
 - `mise install` for tooling (python 3.14, uv, gh, gitleaks)
 - `uv sync --group dev` for dependencies
 - Tests: `.venv/bin/python test_coaching.py` (plain scripts, not pytest)
-- Build: `uv run pyinstaller cs2coach.spec`
+- Build: `uv run pyinstaller cs2whine.spec`
 
 ## Architecture
 

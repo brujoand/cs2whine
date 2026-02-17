@@ -4,7 +4,7 @@ import threading
 import time
 from collections import deque
 
-APP_NAME = "CS2 Coach"
+APP_NAME = "cs2whine"
 
 # fmt: off
 PS_TEMPLATE = (
@@ -96,7 +96,7 @@ class Notifier:
     def _show(self, body: str):
         if sys.platform == "win32":
             try:
-                _show_windows_toast("CS2 Coach", body[:256])
+                _show_windows_toast(APP_NAME, body[:256])
             except Exception as e:
                 print(f"\n[TOAST FAILED] {e}", flush=True)
         else:

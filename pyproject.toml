@@ -8,7 +8,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cs2coach = "gsi_server:main"
+cs2whine = "gsi_server:main"
 
 [dependency-groups]
 dev = [
