@@ -1,4 +1,3 @@
-import subprocess
 import sys
 import threading
 import time
@@ -6,56 +5,14 @@ from collections import deque
 
 APP_NAME = "cs2whine"
 
-# fmt: off
-PS_TEMPLATE = (
-    "[Windows.UI.Notifications.ToastNotificationManager,"
-    " Windows.UI.Notifications, ContentType = WindowsRuntime] > $null\n"
-    "[Windows.Data.Xml.Dom.XmlDocument,"
-    " Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null\n"
-    '\n$Template = @"\n'
-    '<toast duration="short">\n'
-    "    <visual>\n"
-    '        <binding template="ToastGeneric">\n'
-    "            <text>{title}</text>\n"
-    "            <text>{msg}</text>\n"
-    "        </binding>\n"
-    "    </visual>\n"
-    '    <audio silent="true" />\n'
-    "</toast>\n"
-    '"@\n'
-    "\n"
-    "$Xml = New-Object Windows.Data.Xml.Dom.XmlDocument\n"
-    "$Xml.LoadXml($Template)\n"
-    "$Toast = [Windows.UI.Notifications.ToastNotification]::new($Xml)\n"
-    "$Notifier = [Windows.UI.Notifications.ToastNotificationManager]"
-    '::CreateToastNotifier("{app_id}")\n'
-    "$Notifier.Show($Toast)\n"
-)
-# fmt: on
-
-
-def _escape_xml(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
 
 def _show_windows_toast(title: str, msg: str):
-    script = PS_TEMPLATE.format(
-        title=_escape_xml(title),
-        msg=_escape_xml(msg),
-        app_id=APP_NAME,
-    )
-    si = subprocess.STARTUPINFO()
-    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    result = subprocess.run(
-        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", script],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        startupinfo=si,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise RuntimeError(f"PowerShell exit {result.returncode}: {stderr}")
+    from windows_toasts import Toast, WindowsToaster
+
+    toaster = WindowsToaster(title)
+    toast = Toast()
+    toast.text_fields = [msg]
+    toaster.show_toast(toast)
 
 
 class Notifier:
@@ -89,7 +46,7 @@ class Notifier:
                     self._show(msg)
                     self.last_sent = time.time()
             except Exception as e:
-                print(f"[NOTIFICATION ERROR] {e}", flush=True)
+                print(f"\n[NOTIFICATION ERROR] {e}", flush=True)
 
             time.sleep(0.5)
 

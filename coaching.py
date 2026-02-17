@@ -31,6 +31,7 @@ class CoachingEngine:
         self.my_team: str = ""
         self.round_duration: float = 115.0
         self.emitted_tips: set = set()
+        self._last_pattern: dict = {}
 
     def process(self, data: dict) -> list[str]:
         tips = []
@@ -182,6 +183,15 @@ class CoachingEngine:
 
         return tips
 
+    def _emit_pattern(self, key: str, severity: int, msg: str, tips: list[str]):
+        prev = self._last_pattern.get(key, 0)
+        if severity > prev:
+            self._last_pattern[key] = severity
+            tips.append(msg)
+
+    def _reset_pattern(self, key: str):
+        self._last_pattern.pop(key, None)
+
     def _analyze_on_round_end(self) -> list[str]:
         tips = []
         recent = list(self.rounds)[-5:]
@@ -191,29 +201,52 @@ class CoachingEngine:
         # early death pattern
         early_deaths = [r for r in recent[-3:] if r.death_time is not None and r.death_time < 20]
         if len(early_deaths) >= 2:
-            tips.append(
+            self._emit_pattern(
+                "early_death",
+                len(early_deaths),
                 f"You died early {len(early_deaths)} of the last "
                 f"{len(recent[-3:])} rounds. Consider playing passive "
-                f"and letting them come to you."
+                f"and letting them come to you.",
+                tips,
             )
+        else:
+            self._reset_pattern("early_death")
 
         # repeated death location
         death_positions = [r.death_position for r in recent[-4:] if r.death_position]
         if len(death_positions) >= 2:
             clusters = self._find_clusters(death_positions, threshold=500)
             if clusters:
-                tips.append(
+                self._emit_pattern(
+                    "death_location",
+                    len(clusters),
                     "You keep dying in the same area. "
-                    "They probably have it locked down — try a different route."
+                    "They probably have it locked down — try a different route.",
+                    tips,
                 )
+            else:
+                self._reset_pattern("death_location")
+        else:
+            self._reset_pattern("death_location")
 
         # losing streak
         recent_results = [r.round_win for r in recent[-4:] if r.round_win is not None]
-        if len(recent_results) >= 3 and all(not w for w in recent_results[-3:]):
-            tips.append(
-                "3 round loss streak. Consider changing your approach — "
-                "different site, different timing, or save for a full buy."
+        consecutive_losses = 0
+        for w in reversed(recent_results):
+            if not w:
+                consecutive_losses += 1
+            else:
+                break
+        if consecutive_losses >= 3:
+            self._emit_pattern(
+                "loss_streak",
+                consecutive_losses,
+                f"{consecutive_losses} round loss streak. Consider changing your approach — "
+                "different site, different timing, or save for a full buy.",
+                tips,
             )
+        else:
+            self._reset_pattern("loss_streak")
 
         # eco awareness
         last = recent[-1]
@@ -225,11 +258,16 @@ class CoachingEngine:
         # not getting kills
         zero_kill_rounds = [r for r in recent[-4:] if r.kills == 0 and not r.survived]
         if len(zero_kill_rounds) >= 3:
-            tips.append(
+            self._emit_pattern(
+                "no_kills",
+                len(zero_kill_rounds),
                 "You've died without getting a kill in "
                 f"{len(zero_kill_rounds)} of the last 4 rounds. "
-                "Play for trades — stick closer to a teammate."
+                "Play for trades — stick closer to a teammate.",
+                tips,
             )
+        else:
+            self._reset_pattern("no_kills")
 
         # bomb plant patterns (tracking enemy tendencies)
         bomb_sites = [r.bomb_planted_site for r in self.rounds if r.bomb_planted_site]
@@ -240,11 +278,18 @@ class CoachingEngine:
             site_counts = Counter(last_4)
             dominant = site_counts.most_common(1)[0]
             if dominant[1] >= 3:
-                tips.append(
+                self._emit_pattern(
+                    "bomb_site",
+                    dominant[1],
                     f"They've planted on {dominant[0]} site "
                     f"{dominant[1]} of the last 4 rounds. "
-                    f"Consider stacking or rotating earlier."
+                    f"Consider stacking or rotating earlier.",
+                    tips,
                 )
+            else:
+                self._reset_pattern("bomb_site")
+        else:
+            self._reset_pattern("bomb_site")
 
         return tips
 
