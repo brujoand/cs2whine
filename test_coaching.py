@@ -224,32 +224,6 @@ def test_defuse_too_late_with_kit():
     print("  PASS: tip triggered at 3s with kit (need 5s)")
 
 
-def test_kit_reminder():
-    print("\n=== Test: Kit reminder ===")
-    coach = CoachingEngine()
-    tips = coach.process(
-        make_payload(1, "freezetime", team="CT", defusekit=False, money=4000, phase_ends_in=5.0)
-    )
-    assert any("kit" in t.lower() for t in tips), f"Expected kit reminder, got: {tips}"
-    print("  PASS: kit reminder triggered")
-
-
-def test_kit_reminder_not_when_has_kit():
-    print("\n=== Test: No kit reminder when already has kit ===")
-    coach = CoachingEngine()
-    tips = coach.process(make_payload(1, "freezetime", team="CT", defusekit=True, money=4000))
-    assert not any("kit" in t.lower() for t in tips), f"Should not remind: {tips}"
-    print("  PASS: no reminder when kit owned")
-
-
-def test_kit_reminder_not_when_broke():
-    print("\n=== Test: No kit reminder when can't afford ===")
-    coach = CoachingEngine()
-    tips = coach.process(make_payload(1, "freezetime", team="CT", defusekit=False, money=200))
-    assert not any("kit" in t.lower() for t in tips), f"Should not remind: {tips}"
-    print("  PASS: no reminder when broke")
-
-
 def test_time_pressure():
     print("\n=== Test: Time pressure (T side) ===")
     coach = CoachingEngine()
@@ -396,9 +370,7 @@ if __name__ == "__main__":
     test_defuse_too_late_no_kit()
     test_defuse_still_possible_with_kit()
     test_defuse_too_late_with_kit()
-    test_kit_reminder()
-    test_kit_reminder_not_when_has_kit()
-    test_kit_reminder_not_when_broke()
+
     test_time_pressure()
     test_no_time_pressure_when_bomb_planted()
     test_no_time_pressure_ct_side()

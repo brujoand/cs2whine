@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 DEFUSE_TIME_KIT = 5.0
 DEFUSE_TIME_NO_KIT = 10.0
-KIT_COST = 400
 TIME_PRESSURE_THRESHOLD = 15.0
 LOW_HP_THRESHOLD = 35
 SAVE_TIME_THRESHOLD = 60.0
@@ -129,17 +128,6 @@ class CoachingEngine:
             and phase_time_remaining is not None
             and phase_time_remaining < FREEZETIME_BUY_WINDOW
         )
-
-        # defuse kit reminder (once per half)
-        if (
-            (late_freezetime or round_phase == "live")
-            and self.my_team == "CT"
-            and not player_state.get("defusekit", False)
-            and player_state.get("money", 0) >= KIT_COST
-            and "kit_reminder" not in self._last_pattern
-        ):
-            self._last_pattern["kit_reminder"] = 1
-            tips.append("You can afford a kit — buy one.")
 
         # freezetime tips (only after player has had time to buy)
         if late_freezetime and self.rounds:
