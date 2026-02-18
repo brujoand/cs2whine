@@ -271,7 +271,7 @@ class CoachingEngine:
     def _analyze_on_round_end(self) -> list[str]:
         tips = []
         recent = list(self.rounds)[-5:]
-        if len(recent) < 2:
+        if not recent:
             return tips
 
         last = recent[-1]
@@ -430,13 +430,36 @@ class CoachingEngine:
         result = "W" if last.round_win else "L" if last.round_win is False else "?"
         survived = "alive" if last.survived else "dead"
 
+        comment = self._round_comment(last)
+
         parts = [
             f"R{last.round_num} {result}",
             f"{last.kills}K/{last.hs_kills}HS ({survived})",
             f"Match: {kills}/{assists}/{deaths} ({hs_pct:.0f}% HS)",
             f"Score:{score} MVPs:{mvps}",
+            comment,
         ]
         return " | ".join(parts)
+
+    @staticmethod
+    def _round_comment(r: RoundSnapshot) -> str:
+        if r.kills >= 3 and r.survived:
+            return "Dominant round."
+        if r.kills >= 3:
+            return "Big impact even though you went down."
+        if r.round_win and r.survived and r.kills >= 1:
+            return "Solid round."
+        if r.round_win and r.kills == 0 and r.survived:
+            return "Stayed alive, that counts."
+        if r.round_win:
+            return "Got the W."
+        if not r.survived and r.kills == 0 and r.death_time is not None and r.death_time < 20:
+            return "Rough — died early with no impact."
+        if not r.survived and r.kills == 0:
+            return "No kills that round — try to get a trade next time."
+        if not r.survived and r.kills >= 1:
+            return "At least you got one."
+        return "On to the next one."
 
     def _pos_to_site(self, pos_str: str) -> str | None:
         if not pos_str:
