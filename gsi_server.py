@@ -34,15 +34,11 @@ def gsi_callback():
     round_data = data.get("round", {})
     player = data.get("player", {})
     round_num = map_data.get("round", "?")
-    round_phase = round_data.get("phase", "")
-    map_phase = map_data.get("phase", "")
+    phase = round_data.get("phase", map_data.get("phase", "?"))
     team = player.get("team", "?")
     health = player.get("state", {}).get("health", "?")
-    print(
-        f"\r[R{round_num}] rp:{round_phase or '-'} mp:{map_phase or '-'} | {team} | hp:{health}",
-        end="",
-        flush=True,
-    )
+    status = f"[R{round_num}] {phase} | {team} | hp:{health}"
+    print(f"\r{status:<50}", end="", flush=True)
 
     tips = coach.process(data)
 
