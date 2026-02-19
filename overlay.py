@@ -1,4 +1,7 @@
+import json
+import subprocess
 import sys
+import tempfile
 import tkinter as tk
 
 
@@ -9,6 +12,7 @@ class Overlay:
         self._label = None
         self._clear_job = None
         self._enabled = True
+        self._hwnd = None
 
         if sys.platform != "win32":
             return
@@ -33,12 +37,30 @@ class Overlay:
         y = screen_h - 200
         win.geometry(f"{win_w}x{win_h}+{x}+{y}")
 
+        HWND_TOPMOST = -1
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_NOACTIVATE = 0x0010
+
         win.update_idletasks()
-        hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+        hwnd = win.winfo_id()
+        parent = ctypes.windll.user32.GetParent(hwnd)
+        if parent:
+            hwnd = parent
         style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         ctypes.windll.user32.SetWindowLongW(
             hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT
         )
+        ctypes.windll.user32.SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        self._hwnd = hwnd
 
         label = tk.Label(
             win,
@@ -53,6 +75,7 @@ class Overlay:
 
         self._window = win
         self._label = label
+        self._reassert_topmost()
 
     def set_enabled(self, enabled: bool):
         self._enabled = enabled
@@ -74,11 +97,31 @@ class Overlay:
         if self._clear_job is not None:
             self._root.after_cancel(self._clear_job)
         self._label.config(text=text)
+        self._window.lift()
         self._clear_job = self._root.after(int(duration * 1000), self._clear)
 
     def _clear(self):
         self._label.config(text="")
         self._clear_job = None
+
+    def _reassert_topmost(self):
+        import ctypes
+
+        HWND_TOPMOST = -1
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_NOACTIVATE = 0x0010
+        if self._enabled and self._hwnd:
+            ctypes.windll.user32.SetWindowPos(
+                self._hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        self._root.after(5000, self._reassert_topmost)
 
 
 class App:
@@ -87,6 +130,7 @@ class App:
         self._root.title("cs2whine")
         self._root.geometry("620x400")
         self._root.configure(bg="#1e1e1e")
+        self._last_gsi = None
 
         top_frame = tk.Frame(self._root, bg="#1e1e1e")
         top_frame.pack(fill="x", padx=8, pady=(8, 0))
@@ -105,6 +149,20 @@ class App:
             font=("Consolas", 10),
         )
         self._overlay_cb.pack(side="left")
+
+        self._gsi_btn = tk.Button(
+            top_frame,
+            text="View GSI",
+            command=self._open_gsi_notepad,
+            bg="#333333",
+            fg="#cccccc",
+            activebackground="#444444",
+            activeforeground="#cccccc",
+            font=("Consolas", 10),
+            borderwidth=1,
+            relief="solid",
+        )
+        self._gsi_btn.pack(side="left", padx=(8, 0))
 
         self._status_label = tk.Label(
             top_frame,
@@ -139,6 +197,23 @@ class App:
 
     def _toggle_overlay(self):
         self.overlay.set_enabled(self._overlay_var.get())
+
+    def set_last_gsi(self, data: dict):
+        self._last_gsi = data
+
+    def _open_gsi_notepad(self):
+        if self._last_gsi is None:
+            return
+        text = json.dumps(self._last_gsi, indent=2)
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", prefix="cs2whine_gsi_", delete=False
+        )
+        tmp.write(text)
+        tmp.close()
+        if sys.platform == "win32":
+            subprocess.Popen(["notepad.exe", tmp.name])
+        else:
+            subprocess.Popen(["xdg-open", tmp.name])
 
     def log(self, text: str):
         self._root.after(0, self._append_log, text)

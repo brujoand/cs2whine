@@ -28,6 +28,8 @@ def gsi_callback():
     if not data:
         return "no data", 400
 
+    gui.set_last_gsi(data)
+
     request_count += 1
     if request_count == 1:
         gui.set_status("Connected")
