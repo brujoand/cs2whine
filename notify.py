@@ -54,8 +54,9 @@ class Notifier:
             time.sleep(0.5)
 
     def _show(self, body: str):
-        if self.overlay:
+        if self.overlay and self.overlay._enabled:
             self.overlay.show_tip(body)
+            return
         if sys.platform == "win32":
             try:
                 _show_windows_toast(APP_NAME, body[:256])
