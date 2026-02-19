@@ -40,6 +40,7 @@ class CoachingEngine:
         self.emitted_tips: set = set()
         self._last_pattern: dict = {}
         self.pending_round_stats: str | None = None
+        self.pending_round_comment: str | None = None
         self._low_hp_since: float | None = None
         self._prev_ct_score: int = 0
         self._prev_t_score: int = 0
@@ -98,6 +99,7 @@ class CoachingEngine:
                 self.rounds.append(self.current_round)
                 log_tips.extend(self._analyze_on_round_end())
                 self.pending_round_stats = self._format_round_stats(match_stats)
+                self.pending_round_comment = self._round_comment(self.rounds[-1])
             self._prev_ct_score = ct_score
             self._prev_t_score = t_score
             self.current_round = RoundSnapshot(round_num=current_round_num)
