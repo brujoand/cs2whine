@@ -485,6 +485,44 @@ def test_context_comment_repeated_trade_deaths():
     print("  PASS: repeated trade death comment is context-aware")
 
 
+def test_spectated_teammate_stats_ignored():
+    print("\n=== Test: Spectated teammate stats ignored after death ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", health=100, kills=0, defusekit=True))
+    # player dies
+    coach.process(
+        make_payload(
+            1,
+            "live",
+            team="CT",
+            health=0,
+            deaths=1,
+            kills=0,
+            defusekit=True,
+            phase_ends_in=90.0,
+        )
+    )
+    assert not coach.current_round.survived, "Player should be dead"
+    assert coach.current_round.kills == 0, "Player had 0 kills"
+    # now spectating teammate who has 3 kills and full health
+    coach.process(
+        make_payload(
+            1,
+            "live",
+            team="CT",
+            health=100,
+            kills=3,
+            defusekit=True,
+        )
+    )
+    assert coach.current_round.kills == 0, (
+        f"Should not pick up spectated kills, got {coach.current_round.kills}"
+    )
+    assert not coach.current_round.survived, "Should still be dead"
+    print("  PASS: spectated teammate stats ignored")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -509,3 +547,4 @@ if __name__ == "__main__":
     test_going_cold()
     test_context_comment_repeated_zero_kills()
     test_context_comment_repeated_trade_deaths()
+    test_spectated_teammate_stats_ignored()
