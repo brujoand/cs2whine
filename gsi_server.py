@@ -1,11 +1,13 @@
 import logging
 import sys
+import threading
 
 from flask import Flask, request
 
 import config
 from coaching import CoachingEngine
 from notify import Notifier
+from overlay import Overlay
 from setup_gsi import install_gsi_config
 from updater import check_for_update
 
@@ -13,7 +15,8 @@ app = Flask(__name__)
 coach = CoachingEngine()
 cfg = config.load()
 
-notifier = Notifier(rate_limit=cfg.get("notification_rate_limit", 8.0))
+overlay = Overlay()
+notifier = Notifier(rate_limit=cfg.get("notification_rate_limit", 8.0), overlay=overlay)
 
 
 request_count = 0
@@ -64,7 +67,13 @@ def main():
     print("Start CS2 and play a match. Tips will appear as notifications.", flush=True)
     sys.stdout.reconfigure(line_buffering=True)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
-    app.run(host="127.0.0.1", port=port, debug=False)
+
+    flask_thread = threading.Thread(
+        target=lambda: app.run(host="127.0.0.1", port=port, debug=False),
+        daemon=True,
+    )
+    flask_thread.start()
+    overlay.run()
 
 
 if __name__ == "__main__":
