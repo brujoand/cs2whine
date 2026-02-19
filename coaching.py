@@ -128,6 +128,17 @@ class CoachingEngine:
                 except (ValueError, AttributeError):
                     pass
 
+        # once dead this round, stop updating stats from spectated teammates
+        if not self.current_round.survived and cur_health > 0:
+            self.prev_state = {
+                "health": cur_health,
+                "round": current_round_num,
+                "kills": match_stats.get("kills", 0),
+                "deaths": match_stats.get("deaths", 0),
+                "team": self.my_team,
+            }
+            return live_tips, log_tips
+
         # track kills (per-round fields from player_state)
         self.current_round.kills = player_state.get("round_kills", 0)
         self.current_round.hs_kills = player_state.get("round_killhs", 0)

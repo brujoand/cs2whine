@@ -194,9 +194,13 @@ class App:
         scrollbar.config(command=self._log_text.yview)
 
         self.overlay = Overlay(self._root)
+        self.overlay.show_tip("cs2whine overlay active", duration=3.0)
 
     def _toggle_overlay(self):
-        self.overlay.set_enabled(self._overlay_var.get())
+        enabled = self._overlay_var.get()
+        self.overlay.set_enabled(enabled)
+        if enabled:
+            self.overlay.show_tip("Overlay enabled", duration=2.0)
 
     def set_last_gsi(self, data: dict):
         self._last_gsi = data
