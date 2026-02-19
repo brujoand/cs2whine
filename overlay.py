@@ -82,6 +82,7 @@ class Overlay:
         if self._window:
             if enabled:
                 self._window.deiconify()
+                self._force_topmost()
             else:
                 self._window.withdraw()
                 self._label.config(text="")
@@ -97,30 +98,37 @@ class Overlay:
         if self._clear_job is not None:
             self._root.after_cancel(self._clear_job)
         self._label.config(text=text)
+        self._window.deiconify()
         self._window.lift()
+        self._force_topmost()
         self._clear_job = self._root.after(int(duration * 1000), self._clear)
 
     def _clear(self):
         self._label.config(text="")
         self._clear_job = None
 
-    def _reassert_topmost(self):
+    def _force_topmost(self):
+        if not self._hwnd:
+            return
         import ctypes
 
         HWND_TOPMOST = -1
         SWP_NOMOVE = 0x0002
         SWP_NOSIZE = 0x0001
         SWP_NOACTIVATE = 0x0010
-        if self._enabled and self._hwnd:
-            ctypes.windll.user32.SetWindowPos(
-                self._hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            )
+        ctypes.windll.user32.SetWindowPos(
+            self._hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+
+    def _reassert_topmost(self):
+        if self._enabled:
+            self._force_topmost()
         self._root.after(5000, self._reassert_topmost)
 
 
