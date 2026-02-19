@@ -1,6 +1,12 @@
 """Unit test for coaching engine — no server needed."""
 
-from coaching import CoachingEngine
+from coaching import CoachingEngine as _CoachingEngine
+
+
+class CoachingEngine(_CoachingEngine):
+    def process(self, data):
+        live, log = super().process(data)
+        return live + log
 
 
 def make_payload(
@@ -359,7 +365,7 @@ def test_untraded_deaths():
     print("\n=== Test: Untraded deaths ===")
     coach = CoachingEngine()
     all_tips = []
-    for rnd in range(1, 5):
+    for rnd in range(1, 6):
         tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
         all_tips.extend(tips)
         tips = coach.process(make_payload(rnd, "live", defusekit=True))

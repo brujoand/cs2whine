@@ -44,8 +44,9 @@ class CoachingEngine:
         self._prev_ct_score: int = 0
         self._prev_t_score: int = 0
 
-    def process(self, data: dict) -> list[str]:
-        tips = []
+    def process(self, data: dict) -> tuple[list[str], list[str]]:
+        live_tips: list[str] = []
+        log_tips: list[str] = []
 
         map_data = data.get("map", {})
         player = data.get("player", {})
@@ -56,12 +57,12 @@ class CoachingEngine:
         phase_countdowns = data.get("phase_countdowns", {})
 
         if not player or not map_data:
-            return tips
+            return live_tips, log_tips
 
         provider_steam = data.get("provider", {}).get("steamid", "")
         player_steam = player.get("steamid", "")
         if provider_steam and player_steam and provider_steam != player_steam:
-            return tips
+            return live_tips, log_tips
 
         current_round_num = map_data.get("round", 0)
         round_phase = round_data.get("phase", "")
@@ -73,10 +74,10 @@ class CoachingEngine:
         self.my_team = new_team
 
         if map_phase == "warmup":
-            return tips
+            return live_tips, log_tips
 
         if current_round_num == 0:
-            return tips
+            return live_tips, log_tips
 
         ct_score = map_data.get("team_ct", {}).get("score", 0)
         t_score = map_data.get("team_t", {}).get("score", 0)
@@ -95,7 +96,7 @@ class CoachingEngine:
                     elif (ct_score + t_score) > (self._prev_ct_score + self._prev_t_score):
                         self.current_round.round_win = False
                 self.rounds.append(self.current_round)
-                tips.extend(self._analyze_on_round_end())
+                log_tips.extend(self._analyze_on_round_end())
                 self.pending_round_stats = self._format_round_stats(match_stats)
             self._prev_ct_score = ct_score
             self._prev_t_score = t_score
@@ -164,7 +165,7 @@ class CoachingEngine:
                 and "eco_discipline" not in self._last_pattern
             ):
                 self._last_pattern["eco_discipline"] = 1
-                tips.append("Force buy while team is saving — you're breaking the eco.")
+                log_tips.append("Force buy while team is saving — you're breaking the eco.")
 
             # no armor on anti-eco (round after a win)
             if (
@@ -174,11 +175,11 @@ class CoachingEngine:
                 and "no_armor" not in self.emitted_tips
             ):
                 self.emitted_tips.add("no_armor")
-                tips.append("No armor — buy helmet before upgrading your weapon.")
+                log_tips.append("No armor — buy helmet before upgrading your weapon.")
 
         # live tips (during round)
         if round_phase == "live":
-            tips.extend(self._live_tips(player_state, match_stats, bomb, phase_time_remaining))
+            live_tips.extend(self._live_tips(player_state, match_stats, bomb, phase_time_remaining))
 
         # round over
         if round_phase == "over":
@@ -193,7 +194,7 @@ class CoachingEngine:
             "team": self.my_team,
         }
 
-        return tips
+        return live_tips, log_tips
 
     def _live_tips(
         self,
@@ -292,8 +293,6 @@ class CoachingEngine:
         if not recent:
             return tips
 
-        last = recent[-1]
-
         # positive: win streak
         recent_wins = [r for r in recent[-3:] if r.round_win is True]
         if len(recent_wins) >= 3:
@@ -362,13 +361,6 @@ class CoachingEngine:
             self._reset_pattern("loss_streak")
             self._reset_pattern("eco_discipline")
 
-        # eco awareness
-        last = recent[-1]
-        if last.equipment_value < 2000 and last.round_win is False:
-            tips.append(
-                "Low equipment value last round. Coordinate an eco or force buy with the team."
-            )
-
         # not getting kills
         zero_kill_rounds = [r for r in recent[-4:] if r.kills == 0 and not r.survived]
         if len(zero_kill_rounds) >= 3:
@@ -412,7 +404,7 @@ class CoachingEngine:
                 consecutive_no_impact += 1
             else:
                 break
-        if consecutive_no_impact >= 2:
+        if consecutive_no_impact >= 3:
             self._emit_pattern(
                 "no_impact",
                 consecutive_no_impact,
@@ -444,11 +436,12 @@ class CoachingEngine:
             recent_5 = all_rounds[-5:]
             recent_kills = sum(r.kills for r in recent_5)
             recent_avg = recent_kills / 5
-            if match_avg > 0.5 and recent_avg < match_avg * 0.5:
+            if match_avg >= 1.0 and recent_avg < match_avg * 0.5:
                 self._emit_pattern(
                     "going_cold",
                     1,
-                    f"You're going cold — {recent_kills} kills in the last "
+                    f"You're going cold — {recent_kills} "
+                    f"{'kill' if recent_kills == 1 else 'kills'} in the last "
                     f"5 rounds vs your match average of {match_avg:.1f}/round. "
                     "Mix up your approach.",
                     tips,
@@ -517,7 +510,7 @@ class CoachingEngine:
             recent_trade_deaths = sum(
                 1 for rd in completed[-5:] if rd.kills >= 1 and not rd.survived
             )
-            if recent_trade_deaths >= 3:
+            if recent_trade_deaths >= 3 and len(completed) >= 5:
                 return "Trading but never surviving — try playing second in."
             return "Got a pick before going down."
         return "On to the next one."
