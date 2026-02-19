@@ -8,7 +8,6 @@ TIME_PRESSURE_THRESHOLD = 15.0
 LOW_HP_THRESHOLD = 35
 SAVE_TIME_THRESHOLD = 60.0
 SAVE_EQUIP_THRESHOLD = 500
-FORCE_BUY_MONEY_THRESHOLD = 3500
 FORCE_BUY_EQUIP_THRESHOLD = 2000
 FREEZETIME_BUY_WINDOW = 10.0
 LOW_HP_DELAY = 2.0
@@ -42,6 +41,8 @@ class CoachingEngine:
         self._last_pattern: dict = {}
         self.pending_round_stats: str | None = None
         self._low_hp_since: float | None = None
+        self._prev_ct_score: int = 0
+        self._prev_t_score: int = 0
 
     def process(self, data: dict) -> list[str]:
         tips = []
@@ -74,14 +75,30 @@ class CoachingEngine:
         if map_phase == "warmup":
             return tips
 
+        if current_round_num == 0:
+            return tips
+
+        ct_score = map_data.get("team_ct", {}).get("score", 0)
+        t_score = map_data.get("team_t", {}).get("score", 0)
+
         # new round started
         if round_phase == "freezetime" and (
             self.current_round is None or self.current_round.round_num != current_round_num
         ):
             if self.current_round:
+                prev_team = self.prev_state.get("team", self.my_team)
+                if self.current_round.round_win is None and prev_team:
+                    my_prev = self._prev_ct_score if prev_team == "CT" else self._prev_t_score
+                    my_curr = ct_score if prev_team == "CT" else t_score
+                    if my_curr > my_prev:
+                        self.current_round.round_win = True
+                    elif (ct_score + t_score) > (self._prev_ct_score + self._prev_t_score):
+                        self.current_round.round_win = False
                 self.rounds.append(self.current_round)
                 tips.extend(self._analyze_on_round_end())
                 self.pending_round_stats = self._format_round_stats(match_stats)
+            self._prev_ct_score = ct_score
+            self._prev_t_score = t_score
             self.current_round = RoundSnapshot(round_num=current_round_num)
             self.emitted_tips.clear()
 
@@ -173,6 +190,7 @@ class CoachingEngine:
             "round": current_round_num,
             "kills": match_stats.get("kills", 0),
             "deaths": match_stats.get("deaths", 0),
+            "team": self.my_team,
         }
 
         return tips
@@ -387,22 +405,56 @@ class CoachingEngine:
         else:
             self._reset_pattern("bomb_site")
 
-        # untraded deaths (consecutive rounds dying with 0 kills)
-        consecutive_untraded = 0
+        # dying without impact (consecutive rounds dying with 0 kills)
+        consecutive_no_impact = 0
         for r in reversed(recent):
             if not r.survived and r.kills == 0:
-                consecutive_untraded += 1
+                consecutive_no_impact += 1
             else:
                 break
-        if consecutive_untraded >= 2:
+        if consecutive_no_impact >= 2:
             self._emit_pattern(
-                "untraded",
-                consecutive_untraded,
-                "Dying untraded again — wait for support before peeking.",
+                "no_impact",
+                consecutive_no_impact,
+                "Dying without impact again — wait for support before peeking.",
                 tips,
             )
         else:
-            self._reset_pattern("untraded")
+            self._reset_pattern("no_impact")
+
+        # survival rate
+        all_rounds = list(self.rounds)
+        if len(all_rounds) >= 6:
+            recent_6 = all_rounds[-6:]
+            survived_count = sum(1 for r in recent_6 if r.survived)
+            if survived_count <= 1:
+                self._emit_pattern(
+                    "low_survival",
+                    6 - survived_count,
+                    f"You survived {survived_count} of the last 6 rounds. "
+                    "You're dying too much — play for survival, not hero plays.",
+                    tips,
+                )
+            else:
+                self._reset_pattern("low_survival")
+
+        # going cold
+        if len(all_rounds) >= 8:
+            match_avg = sum(r.kills for r in all_rounds) / len(all_rounds)
+            recent_5 = all_rounds[-5:]
+            recent_kills = sum(r.kills for r in recent_5)
+            recent_avg = recent_kills / 5
+            if match_avg > 0.5 and recent_avg < match_avg * 0.5:
+                self._emit_pattern(
+                    "going_cold",
+                    1,
+                    f"You're going cold — {recent_kills} kills in the last "
+                    f"5 rounds vs your match average of {match_avg:.1f}/round. "
+                    "Mix up your approach.",
+                    tips,
+                )
+            else:
+                self._reset_pattern("going_cold")
 
         return tips
 
@@ -441,8 +493,9 @@ class CoachingEngine:
         ]
         return " | ".join(parts)
 
-    @staticmethod
-    def _round_comment(r: RoundSnapshot) -> str:
+    def _round_comment(self, r: RoundSnapshot) -> str:
+        completed = list(self.rounds)
+
         if r.kills >= 3 and r.survived:
             return "Dominant round."
         if r.kills >= 3:
@@ -456,9 +509,17 @@ class CoachingEngine:
         if not r.survived and r.kills == 0 and r.death_time is not None and r.death_time < 20:
             return "Rough — died early with no impact."
         if not r.survived and r.kills == 0:
+            recent_zero = sum(1 for rd in completed[-5:] if rd.kills == 0 and not rd.survived)
+            if recent_zero >= 3:
+                return "Still no kills — might be time to change positions entirely."
             return "No kills that round — try to get a trade next time."
         if not r.survived and r.kills >= 1:
-            return "At least you got one."
+            recent_trade_deaths = sum(
+                1 for rd in completed[-5:] if rd.kills >= 1 and not rd.survived
+            )
+            if recent_trade_deaths >= 3:
+                return "Trading but never surviving — try playing second in."
+            return "Got a pick before going down."
         return "On to the next one."
 
     def _pos_to_site(self, pos_str: str) -> str | None:

@@ -19,9 +19,17 @@ def make_payload(
     money=4000,
     defusekit=False,
     phase_ends_in=None,
+    ct_score=0,
+    t_score=0,
 ):
     p = {
-        "map": {"name": "de_dust2", "phase": "live", "round": round_num},
+        "map": {
+            "name": "de_dust2",
+            "phase": "live",
+            "round": round_num,
+            "team_ct": {"score": ct_score},
+            "team_t": {"score": t_score},
+        },
         "player": {
             "steamid": "76561198000000000",
             "name": "TestPlayer",
@@ -364,8 +372,111 @@ def test_untraded_deaths():
             make_payload(rnd, "over", health=0, deaths=rnd, win_team="T", defusekit=True)
         )
         all_tips.extend(tips)
-    assert any("untraded" in t.lower() for t in all_tips), f"Expected untraded tip, got: {all_tips}"
-    print("  PASS: untraded death warning")
+    assert any("without impact" in t.lower() for t in all_tips), (
+        f"Expected no-impact tip, got: {all_tips}"
+    )
+    print("  PASS: dying without impact warning")
+
+
+def test_round_zero_ignored():
+    print("\n=== Test: R0 ignored ===")
+    coach = CoachingEngine()
+    tips = coach.process(make_payload(0, "freezetime"))
+    assert not tips, f"R0 should produce no tips, got: {tips}"
+    assert coach.current_round is None, "R0 should not create a round"
+    print("  PASS: R0 ignored")
+
+
+def test_round_win_from_scores():
+    print("\n=== Test: Round win from score delta ===")
+    coach = CoachingEngine()
+    # R1 freezetime
+    coach.process(make_payload(1, "freezetime", team="CT", ct_score=0, t_score=0))
+    coach.process(make_payload(1, "live", team="CT", ct_score=0, t_score=0))
+    # skip "over" — go straight to R2 freezetime with CT score bumped
+    coach.process(make_payload(2, "freezetime", team="CT", ct_score=1, t_score=0))
+    assert coach.rounds[-1].round_win is True, (
+        f"Expected win from score delta, got {coach.rounds[-1].round_win}"
+    )
+    # R2: T wins
+    coach.process(make_payload(2, "live", team="CT", ct_score=1, t_score=0))
+    coach.process(make_payload(3, "freezetime", team="CT", ct_score=1, t_score=1))
+    assert coach.rounds[-1].round_win is False, (
+        f"Expected loss from score delta, got {coach.rounds[-1].round_win}"
+    )
+    print("  PASS: win/loss detected from score changes")
+
+
+def test_survival_rate():
+    print("\n=== Test: Survival rate warning ===")
+    coach = CoachingEngine()
+    all_tips = []
+    for rnd in range(1, 8):
+        tips = coach.process(
+            make_payload(rnd, "freezetime", defusekit=True, ct_score=0, t_score=rnd - 1)
+        )
+        all_tips.extend(tips)
+        coach.process(make_payload(rnd, "live", defusekit=True))
+        coach.process(
+            make_payload(rnd, "live", health=0, deaths=rnd, defusekit=True, phase_ends_in=100.0)
+        )
+        coach.process(make_payload(rnd, "over", health=0, deaths=rnd, win_team="T", defusekit=True))
+    tips = coach.process(make_payload(8, "freezetime", defusekit=True, ct_score=0, t_score=7))
+    all_tips.extend(tips)
+    assert any("survived" in t.lower() for t in all_tips), (
+        f"Expected survival rate tip, got: {all_tips}"
+    )
+    print("  PASS: survival rate warning triggered")
+
+
+def test_going_cold():
+    print("\n=== Test: Going cold detection ===")
+    coach = CoachingEngine()
+    all_tips = []
+    # first 5 rounds: 2 kills each (good)
+    for rnd in range(1, 6):
+        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
+        all_tips.extend(tips)
+        coach.process(make_payload(rnd, "live", kills=2, defusekit=True))
+        coach.process(make_payload(rnd, "over", kills=2, win_team="CT", defusekit=True))
+    # next 5 rounds: 0 kills each (cold)
+    for rnd in range(6, 11):
+        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
+        all_tips.extend(tips)
+        coach.process(make_payload(rnd, "live", kills=0, defusekit=True))
+        coach.process(make_payload(rnd, "over", kills=0, win_team="T", defusekit=True))
+    tips = coach.process(make_payload(11, "freezetime", defusekit=True))
+    all_tips.extend(tips)
+    assert any("going cold" in t.lower() for t in all_tips), (
+        f"Expected cold streak tip, got: {all_tips}"
+    )
+    print("  PASS: going cold detection triggered")
+
+
+def test_context_comment_repeated_zero_kills():
+    print("\n=== Test: Context-aware comment for repeated 0-kill rounds ===")
+    from coaching import RoundSnapshot
+
+    coach = CoachingEngine()
+    for rnd in range(1, 6):
+        coach.rounds.append(RoundSnapshot(round_num=rnd, kills=0, survived=False, round_win=False))
+    r = RoundSnapshot(round_num=6, kills=0, survived=False, round_win=False)
+    comment = coach._round_comment(r)
+    assert "change positions" in comment.lower(), f"Expected context comment, got: {comment}"
+    print("  PASS: repeated 0-kill comment is context-aware")
+
+
+def test_context_comment_repeated_trade_deaths():
+    print("\n=== Test: Context-aware comment for repeated trade deaths ===")
+    from coaching import RoundSnapshot
+
+    coach = CoachingEngine()
+    for rnd in range(1, 6):
+        coach.rounds.append(RoundSnapshot(round_num=rnd, kills=1, survived=False, round_win=False))
+    r = RoundSnapshot(round_num=6, kills=1, survived=False, round_win=False)
+    comment = coach._round_comment(r)
+    assert "second in" in comment.lower(), f"Expected trade death comment, got: {comment}"
+    print("  PASS: repeated trade death comment is context-aware")
 
 
 if __name__ == "__main__":
@@ -386,3 +497,9 @@ if __name__ == "__main__":
     test_no_armor_anti_eco()
     test_eco_discipline()
     test_untraded_deaths()
+    test_round_zero_ignored()
+    test_round_win_from_scores()
+    test_survival_rate()
+    test_going_cold()
+    test_context_comment_repeated_zero_kills()
+    test_context_comment_repeated_trade_deaths()
