@@ -18,8 +18,9 @@ def _show_windows_toast(title: str, msg: str):
 
 
 class Notifier:
-    def __init__(self, rate_limit: float = 8.0):
+    def __init__(self, rate_limit: float = 8.0, overlay=None):
         self.rate_limit = rate_limit
+        self.overlay = overlay
         self.last_sent = 0.0
         self.queue: deque[str] = deque(maxlen=10)
         self._lock = threading.Lock()
@@ -53,6 +54,8 @@ class Notifier:
             time.sleep(0.5)
 
     def _show(self, body: str):
+        if self.overlay:
+            self.overlay.show_tip(body)
         if sys.platform == "win32":
             try:
                 _show_windows_toast(APP_NAME, body[:256])
