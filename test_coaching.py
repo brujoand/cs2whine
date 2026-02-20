@@ -49,11 +49,13 @@ def make_payload(
     t_score=0,
     weapons=None,
     round_wins=None,
+    map_name="de_dust2",
+    map_phase=None,
 ):
     p = {
         "map": {
-            "name": "de_dust2",
-            "phase": "live",
+            "name": map_name,
+            "phase": map_phase or "live",
             "round": round_num,
             "team_ct": {"score": ct_score},
             "team_t": {"score": t_score},
@@ -613,6 +615,49 @@ def test_pattern_cooldown():
     print(f"  PASS: {len(loss_streak_tips)} loss streak tips (cooldown working)")
 
 
+def test_new_match_resets_on_map_change():
+    print("\n=== Test: New match reset on map change ===")
+    coach = CoachingEngine()
+    for rnd in range(1, 4):
+        coach.process(make_payload(rnd, "freezetime"))
+        coach.process(make_payload(rnd, "live"))
+        coach.process(make_payload(rnd, "over", win_team="CT"))
+    assert len(coach.rounds) == 2
+    # new map
+    coach.process(make_payload(1, "freezetime", map_name="de_mirage"))
+    assert len(coach.rounds) == 0, f"Expected reset, got {len(coach.rounds)} rounds"
+    assert coach.match_map == "de_mirage"
+    print("  PASS: stats reset on map change")
+
+
+def test_new_match_resets_on_warmup():
+    print("\n=== Test: New match reset on warmup ===")
+    coach = CoachingEngine()
+    for rnd in range(1, 4):
+        coach.process(make_payload(rnd, "freezetime"))
+        coach.process(make_payload(rnd, "live"))
+        coach.process(make_payload(rnd, "over", win_team="CT"))
+    assert len(coach.rounds) == 2
+    # warmup phase
+    coach.process(make_payload(0, "freezetime", map_phase="warmup"))
+    assert len(coach.rounds) == 0, f"Expected reset, got {len(coach.rounds)} rounds"
+    print("  PASS: stats reset on warmup")
+
+
+def test_new_match_resets_on_round_number_drop():
+    print("\n=== Test: New match reset on round number drop ===")
+    coach = CoachingEngine()
+    for rnd in range(1, 6):
+        coach.process(make_payload(rnd, "freezetime"))
+        coach.process(make_payload(rnd, "live"))
+        coach.process(make_payload(rnd, "over", win_team="CT"))
+    assert coach.current_round.round_num == 5
+    # round drops back to 1
+    coach.process(make_payload(1, "freezetime"))
+    assert len(coach.rounds) == 0, f"Expected reset, got {len(coach.rounds)} rounds"
+    print("  PASS: stats reset on round number drop")
+
+
 def test_context_comment_repeated_zero_kills():
     print("\n=== Test: Context-aware comment for repeated 0-kill rounds ===")
     from coaching import RoundSnapshot
@@ -977,6 +1022,9 @@ if __name__ == "__main__":
     test_retake_wait()
     test_freezetime_tips_are_live()
     test_pattern_cooldown()
+    test_new_match_resets_on_map_change()
+    test_new_match_resets_on_warmup()
+    test_new_match_resets_on_round_number_drop()
     test_context_comment_repeated_zero_kills()
     test_context_comment_repeated_trade_deaths()
     test_spectated_teammate_stats_ignored()

@@ -65,6 +65,22 @@ class CoachingEngine:
         self._position_history: deque[tuple[tuple[float, float, float], float]] = deque(maxlen=20)
         self._prev_round_kills: int = 0
 
+    def _reset_match(self):
+        self.rounds.clear()
+        self.current_round = None
+        self.prev_state.clear()
+        self.my_team = ""
+        self.emitted_tips.clear()
+        self._last_pattern.clear()
+        self._pattern_cooldown.clear()
+        self.pending_round_stats = None
+        self.pending_round_comment = None
+        self._low_hp_since = None
+        self._prev_ct_score = 0
+        self._prev_t_score = 0
+        self._position_history.clear()
+        self._prev_round_kills = 0
+
     def process(self, data: dict) -> tuple[list[str], list[str]]:
         live_tips: list[str] = []
         log_tips: list[str] = []
@@ -88,10 +104,28 @@ class CoachingEngine:
         current_round_num = map_data.get("round", 0)
         round_phase = round_data.get("phase", "")
         map_phase = map_data.get("phase", "")
-        self.match_map = map_data.get("name", "")
+        map_name = map_data.get("name", "")
+
+        # detect new match: map change, warmup after playing, or round number reset
+        new_match = False
+        if self.match_map and map_name and map_name != self.match_map:
+            new_match = True
+        elif map_phase == "warmup" and self.rounds:
+            new_match = True
+        elif (
+            self.current_round
+            and current_round_num < self.current_round.round_num
+            and current_round_num <= 1
+        ):
+            new_match = True
+        if new_match:
+            self._reset_match()
+
+        self.match_map = map_name
         new_team = player.get("team", "")
         if new_team != self.my_team:
             self._last_pattern.clear()
+            self._pattern_cooldown.clear()
         self.my_team = new_team
 
         if map_phase == "warmup":
