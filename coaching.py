@@ -1,6 +1,6 @@
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFUSE_TIME_KIT = 5.0
 DEFUSE_TIME_NO_KIT = 10.0
@@ -36,6 +36,8 @@ class RoundSnapshot:
     weapon_at_death: str = ""
     win_method: str = ""
     moving_kills: int = 0
+    damage_given: list[tuple[str, int, int]] = field(default_factory=list)
+    damage_taken: list[tuple[str, int, int]] = field(default_factory=list)
 
 
 class CoachingEngine:
@@ -251,6 +253,14 @@ class CoachingEngine:
         }
 
         return live_tips, log_tips
+
+    def set_damage_report(self, given: list, taken: list):
+        target = self.current_round
+        if self.rounds and self.current_round and self.current_round.phase == "freezetime":
+            target = self.rounds[-1]
+        if target:
+            target.damage_given = given
+            target.damage_taken = taken
 
     def _live_tips(
         self,
@@ -568,6 +578,21 @@ class CoachingEngine:
                 )
             else:
                 self._reset_pattern("going_cold")
+
+        last = self.rounds[-1]
+        if last.damage_given and last.kills == 0:
+            hit_count = len(last.damage_given)
+            if hit_count >= 3:
+                tips.append(f"You hit {hit_count} opponents but finished none — focus fire.")
+        for name, dmg, hits in last.damage_given:
+            if 90 <= dmg <= 99:
+                tips.append(f"{dmg} in {hits} on {name} — one headshot converts that.")
+                break
+        if len(last.damage_taken) >= 4:
+            tips.append(
+                f"You took damage from {len(last.damage_taken)} players — "
+                "you were exposed to too many angles."
+            )
 
         return tips
 
