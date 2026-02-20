@@ -53,9 +53,7 @@ def gsi_callback():
     if coach.pending_round_stats:
         gui.log(f"--- {coach.pending_round_stats}")
         coach.pending_round_stats = None
-    if coach.pending_round_comment:
-        gui.log(f">>> {coach.pending_round_comment}")
-        coach.pending_round_comment = None
+    coach.pending_round_comment = None
 
     for tip in log_tips:
         gui.log(f">>> {tip}")

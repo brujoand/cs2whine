@@ -9,14 +9,14 @@ LOW_HP_THRESHOLD = 35
 SAVE_TIME_THRESHOLD = 60.0
 SAVE_EQUIP_THRESHOLD = 500
 FORCE_BUY_EQUIP_THRESHOLD = 2000
-FREEZETIME_BUY_WINDOW = 10.0
+FREEZETIME_BUY_WINDOW = 15.0
 LOW_HP_DELAY = 2.0
 RIFLE_BUY_THRESHOLD = 2700
 FULL_BUY_THRESHOLD = 4750
 ECO_EQUIP_THRESHOLD = 1500
-ECO_MONEY_THRESHOLD = 2000
+ECO_MONEY_THRESHOLD = 3000
 FORCE_EQUIP_LOW = 1500
-FORCE_EQUIP_HIGH = 2500
+FORCE_EQUIP_HIGH = 3000
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 MOVING_SPEED_THRESHOLD = 50.0
 RIFLE_MOVING_TYPES = {"Rifle", "SniperRifle"}
@@ -56,6 +56,7 @@ class CoachingEngine:
         self.round_duration: float = 115.0
         self.emitted_tips: set = set()
         self._last_pattern: dict = {}
+        self._pattern_cooldown: dict[str, int] = {}
         self.pending_round_stats: str | None = None
         self.pending_round_comment: str | None = None
         self._low_hp_since: float | None = None
@@ -391,14 +392,22 @@ class CoachingEngine:
 
         return tips
 
+    PATTERN_COOLDOWN_ROUNDS = 3
+
     def _emit_pattern(self, key: str, severity: int, msg: str, tips: list[str]):
+        current_round = self.rounds[-1].round_num if self.rounds else 0
+        cooldown_until = self._pattern_cooldown.get(key, 0)
+        if current_round < cooldown_until:
+            return
         prev = self._last_pattern.get(key, 0)
         if severity > prev:
             self._last_pattern[key] = severity
+            self._pattern_cooldown[key] = current_round + self.PATTERN_COOLDOWN_ROUNDS
             tips.append(msg)
 
     def _reset_pattern(self, key: str):
         self._last_pattern.pop(key, None)
+        self._pattern_cooldown.pop(key, None)
 
     def _analyze_on_round_end(self) -> list[str]:
         tips = []
