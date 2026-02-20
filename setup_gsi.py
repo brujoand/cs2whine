@@ -12,19 +12,19 @@ STEAM_PATHS = [
     r"D:\SteamLibrary",
 ]
 
-CS2_CFG_RELATIVE = os.path.join(
-    "steamapps", "common", "Counter-Strike Global Offensive", "game", "csgo", "cfg"
+CS2_CSGO_RELATIVE = os.path.join(
+    "steamapps", "common", "Counter-Strike Global Offensive", "game", "csgo"
 )
 
 
-def find_cs2_cfg_dir() -> str | None:
+def find_cs2_csgo_dir() -> str | None:
     if sys.platform != "win32":
         return None
 
     for steam_path in STEAM_PATHS:
-        cfg_dir = os.path.join(steam_path, CS2_CFG_RELATIVE)
-        if os.path.isdir(cfg_dir):
-            return cfg_dir
+        csgo_dir = os.path.join(steam_path, CS2_CSGO_RELATIVE)
+        if os.path.isdir(csgo_dir):
+            return csgo_dir
 
     libraryfolders = os.path.join(STEAM_PATHS[0], "steamapps", "libraryfolders.vdf")
     if os.path.isfile(libraryfolders):
@@ -34,12 +34,21 @@ def find_cs2_cfg_dir() -> str | None:
                     line = line.strip()
                     if '"path"' in line:
                         path = line.split('"')[3]
-                        cfg_dir = os.path.join(path, CS2_CFG_RELATIVE)
-                        if os.path.isdir(cfg_dir):
-                            return cfg_dir
+                        csgo_dir = os.path.join(path, CS2_CSGO_RELATIVE)
+                        if os.path.isdir(csgo_dir):
+                            return csgo_dir
         except (IndexError, OSError):
             pass
 
+    return None
+
+
+def find_cs2_cfg_dir() -> str | None:
+    csgo_dir = find_cs2_csgo_dir()
+    if csgo_dir:
+        cfg_dir = os.path.join(csgo_dir, "cfg")
+        if os.path.isdir(cfg_dir):
+            return cfg_dir
     return None
 
 

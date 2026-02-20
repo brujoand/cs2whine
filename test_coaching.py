@@ -747,6 +747,75 @@ def test_parse_vector():
     print("  PASS: _parse_vector works")
 
 
+def test_damage_hit_many_finished_none():
+    print("\n=== Test: Hit many opponents, finished none ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.current_round.damage_given = [
+        ("A", 80, 3),
+        ("B", 60, 2),
+        ("C", 45, 2),
+    ]
+    coach.process(
+        make_payload(
+            1,
+            "live",
+            team="CT",
+            health=0,
+            deaths=1,
+            defusekit=True,
+            phase_ends_in=90.0,
+        )
+    )
+    coach.process(make_payload(1, "over", team="CT", health=0, win_team="T", defusekit=True))
+    tips = coach.process(make_payload(2, "freezetime", team="CT", defusekit=True))
+    assert any("focus fire" in t.lower() for t in tips), f"Expected focus fire tip, got: {tips}"
+    print("  PASS: hit many finished none tip triggered")
+
+
+def test_98_damage_tip():
+    print("\n=== Test: 98 damage tip ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.current_round.damage_given = [("Enemy", 98, 4)]
+    coach.process(make_payload(1, "over", team="CT", win_team="T", defusekit=True))
+    tips = coach.process(make_payload(2, "freezetime", team="CT", defusekit=True))
+    assert any("98" in t and "headshot" in t.lower() for t in tips), (
+        f"Expected 98 damage tip, got: {tips}"
+    )
+    print("  PASS: 98 damage tip triggered")
+
+
+def test_exposed_to_many_angles():
+    print("\n=== Test: Exposed to many angles ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.current_round.damage_taken = [
+        ("A", 25, 1),
+        ("B", 30, 1),
+        ("C", 20, 1),
+        ("D", 25, 1),
+    ]
+    coach.process(
+        make_payload(
+            1,
+            "live",
+            team="CT",
+            health=0,
+            deaths=1,
+            defusekit=True,
+            phase_ends_in=90.0,
+        )
+    )
+    coach.process(make_payload(1, "over", team="CT", health=0, win_team="T", defusekit=True))
+    tips = coach.process(make_payload(2, "freezetime", team="CT", defusekit=True))
+    assert any("too many angles" in t.lower() for t in tips), f"Expected angles tip, got: {tips}"
+    print("  PASS: exposed to many angles tip triggered")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -779,3 +848,6 @@ if __name__ == "__main__":
     test_elimination_loss_method()
     test_moving_kill_detection()
     test_parse_vector()
+    test_damage_hit_many_finished_none()
+    test_98_damage_tip()
+    test_exposed_to_many_angles()
