@@ -13,6 +13,8 @@ FREEZETIME_BUY_WINDOW = 10.0
 LOW_HP_DELAY = 2.0
 RIFLE_BUY_THRESHOLD = 2700
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
+MOVING_SPEED_THRESHOLD = 50.0
+RIFLE_MOVING_TYPES = {"Rifle", "SniperRifle"}
 
 
 @dataclass
@@ -33,6 +35,7 @@ class RoundSnapshot:
     active_weapon_type: str = ""
     weapon_at_death: str = ""
     win_method: str = ""
+    moving_kills: int = 0
 
 
 class CoachingEngine:
@@ -50,6 +53,8 @@ class CoachingEngine:
         self._low_hp_since: float | None = None
         self._prev_ct_score: int = 0
         self._prev_t_score: int = 0
+        self._position_history: deque[tuple[tuple[float, float, float], float]] = deque(maxlen=20)
+        self._prev_round_kills: int = 0
 
     def process(self, data: dict) -> tuple[list[str], list[str]]:
         live_tips: list[str] = []
@@ -110,6 +115,8 @@ class CoachingEngine:
             self._prev_t_score = t_score
             self.current_round = RoundSnapshot(round_num=current_round_num)
             self.emitted_tips.clear()
+            self._position_history.clear()
+            self._prev_round_kills = 0
 
         if not self.current_round:
             self.current_round = RoundSnapshot(round_num=current_round_num)
@@ -124,6 +131,23 @@ class CoachingEngine:
         self.current_round.has_primary = has_primary
         self.current_round.active_weapon_type = active_type
 
+        # track position
+        pos = self._parse_vector(player.get("position", ""))
+        if pos and round_phase == "live":
+            self._position_history.append((pos, time.monotonic()))
+
+        # detect moving kills
+        cur_kills = player_state.get("round_kills", 0)
+        if cur_kills > self._prev_round_kills:
+            speed = self._speed()
+            if (
+                speed is not None
+                and speed > MOVING_SPEED_THRESHOLD
+                and active_type in RIFLE_MOVING_TYPES
+            ):
+                self.current_round.moving_kills += cur_kills - self._prev_round_kills
+        self._prev_round_kills = cur_kills
+
         # track deaths
         prev_health = self.prev_state.get("health", 100)
         cur_health = player_state.get("health", 100)
@@ -133,15 +157,9 @@ class CoachingEngine:
                 elapsed = self.round_duration - phase_time_remaining
             else:
                 elapsed = None
-            pos = data.get("player", {}).get("position", "")
             self.current_round.death_time = elapsed
             self.current_round.survived = False
-            if pos:
-                try:
-                    coords = tuple(float(x) for x in pos.split(", "))
-                    self.current_round.death_position = coords
-                except (ValueError, AttributeError):
-                    pass
+            self.current_round.death_position = pos
 
         # once dead this round, stop updating stats from spectated teammates
         if not self.current_round.survived and cur_health > 0:
@@ -378,6 +396,17 @@ class CoachingEngine:
         else:
             self._reset_pattern("knife_death")
 
+        moving_kill_rounds = sum(1 for r in recent[-3:] if r.moving_kills > 0)
+        if moving_kill_rounds >= 2:
+            self._emit_pattern(
+                "moving_kills",
+                moving_kill_rounds,
+                "You're shooting while moving — stop before you fire with rifles.",
+                tips,
+            )
+        else:
+            self._reset_pattern("moving_kills")
+
         # repeated death location
         death_positions = [r.death_position for r in recent[-4:] if r.death_position]
         if len(death_positions) >= 2:
@@ -606,6 +635,25 @@ class CoachingEngine:
             return "Got a pick before going down."
         return "On to the next one."
 
+    def _parse_vector(self, s: str) -> tuple[float, float, float] | None:
+        if not s:
+            return None
+        try:
+            parts = s.split(", ")
+            return (float(parts[0]), float(parts[1]), float(parts[2]))
+        except (ValueError, IndexError):
+            return None
+
+    def _speed(self) -> float | None:
+        if len(self._position_history) < 2:
+            return None
+        (p1, t1), (p2, t2) = self._position_history[-2], self._position_history[-1]
+        dt = t2 - t1
+        if dt <= 0:
+            return None
+        dist = sum((a - b) ** 2 for a, b in zip(p1, p2)) ** 0.5
+        return dist / dt
+
     def _parse_weapons(self, weapons: dict) -> tuple[bool, str]:
         has_primary = False
         active_type = ""
@@ -620,14 +668,7 @@ class CoachingEngine:
         return has_primary, active_type
 
     def _pos_to_site(self, pos_str: str) -> str | None:
-        if not pos_str:
+        coords = self._parse_vector(pos_str)
+        if not coords:
             return None
-        # rough A/B classification based on map geometry
-        # this is a simplification — proper implementation needs per-map data
-        try:
-            coords = [float(x) for x in pos_str.split(", ")]
-        except (ValueError, AttributeError):
-            return None
-        # placeholder: return generic site label
-        # TODO: add per-map bombsite coordinate ranges
         return "A" if coords[0] > 0 else "B"

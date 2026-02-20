@@ -692,6 +692,61 @@ def test_elimination_loss_method():
     print("  PASS: elimination loss method pattern detected")
 
 
+def test_moving_kill_detection():
+    print("\n=== Test: Moving kill detection ===")
+    coach = CoachingEngine()
+    rifle_weapons = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
+        "weapon_1": {"name": "weapon_ak47", "type": "Rifle", "state": "active"},
+    }
+    all_tips = []
+    for rnd in range(1, 4):
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="T")))
+        # simulate moving: two positions far apart in quick succession
+        coach.process(
+            make_payload(
+                rnd,
+                "live",
+                team="T",
+                position="0, 0, 0",
+                kills=0,
+                weapons=rifle_weapons,
+            )
+        )
+        # inject a close timestamp to simulate fast movement
+        if coach._position_history:
+            last_pos, last_t = coach._position_history[-1]
+            coach._position_history[-1] = (last_pos, last_t - 0.2)
+        all_tips.extend(
+            coach.process(
+                make_payload(
+                    rnd,
+                    "live",
+                    team="T",
+                    position="500, 0, 0",
+                    kills=1,
+                    weapons=rifle_weapons,
+                )
+            )
+        )
+        assert coach.current_round.moving_kills > 0, f"Round {rnd}: expected moving kill detected"
+        all_tips.extend(coach.process(make_payload(rnd, "over", team="T", kills=1, win_team="T")))
+    all_tips.extend(coach.process(make_payload(4, "freezetime", team="T")))
+    assert any("moving" in t.lower() for t in all_tips), (
+        f"Expected moving kills tip, got: {all_tips}"
+    )
+    print("  PASS: moving kill detection triggered")
+
+
+def test_parse_vector():
+    print("\n=== Test: _parse_vector ===")
+    coach = CoachingEngine()
+    assert coach._parse_vector("1.0, 2.0, 3.0") == (1.0, 2.0, 3.0)
+    assert coach._parse_vector("") is None
+    assert coach._parse_vector("invalid") is None
+    print("  PASS: _parse_vector works")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -722,3 +777,5 @@ if __name__ == "__main__":
     test_knife_death()
     test_bomb_plant_loss_method()
     test_elimination_loss_method()
+    test_moving_kill_detection()
+    test_parse_vector()
