@@ -8,6 +8,9 @@ class CoachingEngine(_CoachingEngine):
         live, log = super().process(data)
         return live + log
 
+    def process_split(self, data):
+        return super().process(data)
+
 
 DEFAULT_WEAPONS = {
     "weapon_0": {
@@ -457,28 +460,136 @@ def test_survival_rate():
     print("  PASS: survival rate warning triggered")
 
 
-def test_going_cold():
-    print("\n=== Test: Going cold detection ===")
+def test_eco_round_detection():
+    print("\n=== Test: Eco round detection ===")
     coach = CoachingEngine()
-    all_tips = []
-    # first 5 rounds: 2 kills each (good)
-    for rnd in range(1, 6):
-        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
-        all_tips.extend(tips)
-        coach.process(make_payload(rnd, "live", kills=2, defusekit=True))
-        coach.process(make_payload(rnd, "over", kills=2, win_team="CT", defusekit=True))
-    # next 5 rounds: 0 kills each (cold)
-    for rnd in range(6, 11):
-        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
-        all_tips.extend(tips)
-        coach.process(make_payload(rnd, "live", kills=0, defusekit=True))
-        coach.process(make_payload(rnd, "over", kills=0, win_team="T", defusekit=True))
-    tips = coach.process(make_payload(11, "freezetime", defusekit=True))
-    all_tips.extend(tips)
-    assert any("going cold" in t.lower() for t in all_tips), (
-        f"Expected cold streak tip, got: {all_tips}"
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="T", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            2,
+            "freezetime",
+            team="CT",
+            money=1500,
+            equip_value=800,
+            defusekit=True,
+            phase_ends_in=5.0,
+        )
     )
-    print("  PASS: going cold detection triggered")
+    assert any("eco round" in t.lower() for t in tips), f"Expected eco round tip, got: {tips}"
+    print("  PASS: eco round detection triggered")
+
+
+def test_force_buy_guidance():
+    print("\n=== Test: Force buy guidance ===")
+    coach = CoachingEngine()
+    for rnd in range(1, 3):
+        coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "live", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "over", team="CT", win_team="T", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            3,
+            "freezetime",
+            team="CT",
+            money=2000,
+            equip_value=2000,
+            defusekit=True,
+            phase_ends_in=5.0,
+        )
+    )
+    assert any("force buy" in t.lower() for t in tips), f"Expected force buy tip, got: {tips}"
+    print("  PASS: force buy guidance triggered")
+
+
+def test_awp_playstyle():
+    print("\n=== Test: AWP playstyle tip ===")
+    coach = CoachingEngine()
+    awp_weapons = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
+        "weapon_1": {"name": "weapon_awp", "type": "SniperRifle", "state": "active"},
+    }
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    tips = coach.process(make_payload(1, "live", team="CT", defusekit=True, weapons=awp_weapons))
+    assert any("awp" in t.lower() for t in tips), f"Expected AWP tip, got: {tips}"
+    print("  PASS: AWP playstyle tip triggered")
+
+
+def test_smg_on_gun_round():
+    print("\n=== Test: SMG on gun round ===")
+    coach = CoachingEngine()
+    smg_weapons = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
+        "weapon_1": {"name": "weapon_mp9", "type": "Submachine Gun", "state": "active"},
+    }
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
+    for rnd in range(2, 5):
+        coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "live", team="CT", defusekit=True))
+        coach.process(make_payload(rnd, "over", team="CT", win_team="CT", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            5, "freezetime", team="CT", defusekit=True, equip_value=2500, weapons=smg_weapons
+        )
+    )
+    tips.extend(
+        coach.process(
+            make_payload(
+                5, "live", team="CT", defusekit=True, equip_value=2500, weapons=smg_weapons
+            )
+        )
+    )
+    assert any("smg" in t.lower() for t in tips), f"Expected SMG tip, got: {tips}"
+    print("  PASS: SMG on gun round tip triggered")
+
+
+def test_flash_warning():
+    print("\n=== Test: Flash warning ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    p = make_payload(1, "live", team="CT", defusekit=True)
+    p["player"]["state"]["flashed"] = 255
+    tips = coach.process(p)
+    assert any("flash" in t.lower() for t in tips), f"Expected flash tip, got: {tips}"
+    print("  PASS: flash warning triggered")
+
+
+def test_retake_wait():
+    print("\n=== Test: CT retake wait ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            1,
+            "live",
+            team="CT",
+            defusekit=True,
+            bomb_state="planted",
+            bomb_position="500, 100, 0",
+            bomb_countdown=30.0,
+        )
+    )
+    assert any("solo retake" in t.lower() for t in tips), f"Expected retake tip, got: {tips}"
+    print("  PASS: CT retake wait tip triggered")
+
+
+def test_freezetime_tips_are_live():
+    print("\n=== Test: Freezetime tips go to live_tips (overlay) ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
+    p = make_payload(2, "freezetime", team="CT", defusekit=True, money=4000, phase_ends_in=5.0)
+    p["player"]["state"]["armor"] = 0
+    live, log = coach.process_split(p)
+    assert any("armor" in t.lower() for t in live), (
+        f"Expected armor tip in live_tips, got live={live}"
+    )
+    assert not any("armor" in t.lower() for t in log), f"Armor tip should not be in log_tips: {log}"
+    print("  PASS: freezetime tips go to live_tips")
 
 
 def test_context_comment_repeated_zero_kills():
@@ -837,7 +948,13 @@ if __name__ == "__main__":
     test_round_zero_ignored()
     test_round_win_from_scores()
     test_survival_rate()
-    test_going_cold()
+    test_eco_round_detection()
+    test_force_buy_guidance()
+    test_awp_playstyle()
+    test_smg_on_gun_round()
+    test_flash_warning()
+    test_retake_wait()
+    test_freezetime_tips_are_live()
     test_context_comment_repeated_zero_kills()
     test_context_comment_repeated_trade_deaths()
     test_spectated_teammate_stats_ignored()
