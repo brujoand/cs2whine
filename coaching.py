@@ -12,9 +12,15 @@ FORCE_BUY_EQUIP_THRESHOLD = 2000
 FREEZETIME_BUY_WINDOW = 10.0
 LOW_HP_DELAY = 2.0
 RIFLE_BUY_THRESHOLD = 2700
+FULL_BUY_THRESHOLD = 4750
+ECO_EQUIP_THRESHOLD = 1500
+ECO_MONEY_THRESHOLD = 2000
+FORCE_EQUIP_LOW = 1500
+FORCE_EQUIP_HIGH = 2500
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 MOVING_SPEED_THRESHOLD = 50.0
 RIFLE_MOVING_TYPES = {"Rifle", "SniperRifle"}
+RETAKE_BOMB_THRESHOLD = 15.0
 
 
 @dataclass
@@ -211,7 +217,7 @@ class CoachingEngine:
                 and "eco_discipline" not in self._last_pattern
             ):
                 self._last_pattern["eco_discipline"] = 1
-                log_tips.append("Force buy while team is saving — you're breaking the eco.")
+                live_tips.append("Force buy while team is saving — you're breaking the eco.")
 
             # no armor on anti-eco (round after a win)
             if (
@@ -221,7 +227,26 @@ class CoachingEngine:
                 and "no_armor" not in self.emitted_tips
             ):
                 self.emitted_tips.add("no_armor")
-                log_tips.append("No armor — buy helmet before upgrading your weapon.")
+                live_tips.append("No armor — buy helmet before upgrading your weapon.")
+
+            # eco round detection
+            if (
+                last_round.round_win is False
+                and self.current_round.equipment_value < ECO_EQUIP_THRESHOLD
+                and money < ECO_MONEY_THRESHOLD
+                and "eco_round" not in self.emitted_tips
+            ):
+                self.emitted_tips.add("eco_round")
+                live_tips.append("Eco round — play for picks, don't take aim duels.")
+
+            # force buy guidance
+            if (
+                lost_consecutive >= 2
+                and FORCE_EQUIP_LOW <= self.current_round.equipment_value <= FORCE_EQUIP_HIGH
+                and "force_buy" not in self.emitted_tips
+            ):
+                self.emitted_tips.add("force_buy")
+                live_tips.append("Force buy — play close angles, make it count.")
 
         if (
             late_freezetime
@@ -231,7 +256,7 @@ class CoachingEngine:
             and "no_primary" not in self.emitted_tips
         ):
             self.emitted_tips.add("no_primary")
-            log_tips.append("No primary weapon — you have enough for a rifle.")
+            live_tips.append("No primary weapon — you have enough for a rifle.")
 
         # live tips (during round)
         if round_phase == "live":
@@ -272,13 +297,6 @@ class CoachingEngine:
         tips = []
 
         cur_health = player_state.get("health", 100)
-        round_kills = player_state.get("round_kills", 0)
-
-        if round_kills >= 3 and f"multikill_{round_kills}" not in self.emitted_tips:
-            self.emitted_tips.add(f"multikill_{round_kills}")
-            labels = {3: "Triple kill", 4: "Quad kill", 5: "ACE"}
-            label = labels.get(round_kills, f"{round_kills}K")
-            tips.append(f"{label}! Nice.")
 
         # low health warning (only if alive at low hp for a sustained period)
         if 0 < cur_health <= LOW_HP_THRESHOLD:
@@ -308,12 +326,7 @@ class CoachingEngine:
         flashed = player_state.get("flashed", 0)
         if flashed > 200 and "flashed_warning" not in self.emitted_tips:
             self.emitted_tips.add("flashed_warning")
-            recent_flashes = sum(1 for r in list(self.rounds)[-3:] if not r.survived)
-            if recent_flashes >= 2:
-                tips.append(
-                    "You keep getting flashed and dying. "
-                    "Try holding a different angle or playing further back."
-                )
+            tips.append("Full flash — back off and reposition.")
 
         # too late to defuse
         bomb_state = bomb.get("state", "")
@@ -342,6 +355,40 @@ class CoachingEngine:
             self.emitted_tips.add("time_pressure")
             tips.append("Under 15s — commit to a site or save.")
 
+        # AWP playstyle
+        if (
+            self.current_round
+            and self.current_round.active_weapon_type == "SniperRifle"
+            and cur_health > 0
+            and "awp_playstyle" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("awp_playstyle")
+            tips.append("AWP out — hold an angle, don't peek.")
+
+        # SMG on gun round
+        if (
+            self.current_round
+            and self.current_round.active_weapon_type == "Submachine Gun"
+            and self.current_round.round_num > 3
+            and player_state.get("equip_value", 0) > 2000
+            and cur_health > 0
+            and "smg_warning" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("smg_warning")
+            tips.append("SMG vs rifles — play close, avoid long range.")
+
+        # CT retake: bomb planted, don't solo
+        if (
+            bomb_state == "planted"
+            and self.my_team == "CT"
+            and cur_health > 0
+            and bomb_countdown is not None
+            and bomb_countdown > RETAKE_BOMB_THRESHOLD
+            and "retake_wait" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("retake_wait")
+            tips.append("Bomb planted — wait for teammates, don't solo retake.")
+
         return tips
 
     def _emit_pattern(self, key: str, severity: int, msg: str, tips: list[str]):
@@ -358,23 +405,6 @@ class CoachingEngine:
         recent = list(self.rounds)[-5:]
         if not recent:
             return tips
-
-        # positive: win streak
-        recent_wins = [r for r in recent[-3:] if r.round_win is True]
-        if len(recent_wins) >= 3:
-            self._emit_pattern(
-                "win_streak", len(recent_wins), "3 wins in a row — keep it up.", tips
-            )
-
-        # positive: consistent fragger
-        high_kill_rounds = [r for r in recent[-3:] if r.kills >= 2]
-        if len(high_kill_rounds) >= 3:
-            self._emit_pattern(
-                "hot_streak",
-                len(high_kill_rounds),
-                "2+ kills every round for the last 3 — you're on fire.",
-                tips,
-            )
 
         # early death pattern
         early_deaths = [r for r in recent[-3:] if r.death_time is not None and r.death_time < 20]
@@ -559,25 +589,6 @@ class CoachingEngine:
                 )
             else:
                 self._reset_pattern("low_survival")
-
-        # going cold
-        if len(all_rounds) >= 8:
-            match_avg = sum(r.kills for r in all_rounds) / len(all_rounds)
-            recent_5 = all_rounds[-5:]
-            recent_kills = sum(r.kills for r in recent_5)
-            recent_avg = recent_kills / 5
-            if match_avg >= 1.0 and recent_avg < match_avg * 0.5:
-                self._emit_pattern(
-                    "going_cold",
-                    1,
-                    f"You're going cold — {recent_kills} "
-                    f"{'kill' if recent_kills == 1 else 'kills'} in the last "
-                    f"5 rounds vs your match average of {match_avg:.1f}/round. "
-                    "Mix up your approach.",
-                    tips,
-                )
-            else:
-                self._reset_pattern("going_cold")
 
         last = self.rounds[-1]
         if last.damage_given and last.kills == 0:
