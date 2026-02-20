@@ -32,6 +32,7 @@ class RoundSnapshot:
     has_primary: bool = False
     active_weapon_type: str = ""
     weapon_at_death: str = ""
+    win_method: str = ""
 
 
 class CoachingEngine:
@@ -220,6 +221,8 @@ class CoachingEngine:
         if round_phase == "over":
             win_team = round_data.get("win_team", "")
             self.current_round.round_win = win_team == self.my_team
+            round_wins = map_data.get("round_wins", {})
+            self.current_round.win_method = round_wins.get(str(current_round_num), "")
 
         self.prev_state = {
             "health": cur_health,
@@ -447,6 +450,43 @@ class CoachingEngine:
                 self._reset_pattern("bomb_site")
         else:
             self._reset_pattern("bomb_site")
+
+        # loss method patterns
+        recent_losses = [r for r in recent[-4:] if r.round_win is False and r.win_method]
+        if len(recent_losses) >= 3:
+            from collections import Counter
+
+            method_counts = Counter(r.win_method for r in recent_losses)
+            top_method, top_count = method_counts.most_common(1)[0]
+            if top_count >= 3:
+                if "bomb" in top_method:
+                    self._emit_pattern(
+                        "loss_method",
+                        top_count,
+                        f"Lost {top_count} rounds to bomb plants — consider rotating faster.",
+                        tips,
+                    )
+                elif "elimination" in top_method:
+                    self._emit_pattern(
+                        "loss_method",
+                        top_count,
+                        f"Lost {top_count} rounds to elimination — "
+                        "play more passively and trade together.",
+                        tips,
+                    )
+                elif "time" in top_method:
+                    self._emit_pattern(
+                        "loss_method",
+                        top_count,
+                        f"Lost {top_count} rounds to time running out — commit to a site earlier.",
+                        tips,
+                    )
+                else:
+                    self._reset_pattern("loss_method")
+            else:
+                self._reset_pattern("loss_method")
+        else:
+            self._reset_pattern("loss_method")
 
         # dying without impact (consecutive rounds dying with 0 kills)
         consecutive_no_impact = 0

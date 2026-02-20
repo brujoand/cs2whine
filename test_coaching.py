@@ -45,6 +45,7 @@ def make_payload(
     ct_score=0,
     t_score=0,
     weapons=None,
+    round_wins=None,
 ):
     p = {
         "map": {
@@ -85,6 +86,8 @@ def make_payload(
         p["bomb"] = {"state": bomb_state, "position": bomb_position}
         if bomb_countdown is not None:
             p["bomb"]["countdown"] = bomb_countdown
+    if round_wins:
+        p["map"]["round_wins"] = round_wins
     if win_team:
         p["round"]["win_team"] = win_team
     if phase_ends_in is not None:
@@ -637,6 +640,58 @@ def test_knife_death():
     print("  PASS: knife death warning triggered")
 
 
+def test_bomb_plant_loss_method():
+    print("\n=== Test: Bomb plant loss method pattern ===")
+    coach = CoachingEngine()
+    all_tips = []
+    for rnd in range(1, 5):
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True)))
+        all_tips.extend(coach.process(make_payload(rnd, "live", team="CT", defusekit=True)))
+        all_tips.extend(
+            coach.process(
+                make_payload(
+                    rnd,
+                    "over",
+                    team="CT",
+                    win_team="T",
+                    defusekit=True,
+                    round_wins={str(rnd): "t_win_bomb"},
+                )
+            )
+        )
+    all_tips.extend(coach.process(make_payload(5, "freezetime", team="CT", defusekit=True)))
+    assert any("bomb plants" in t.lower() for t in all_tips), (
+        f"Expected bomb plant loss tip, got: {all_tips}"
+    )
+    print("  PASS: bomb plant loss method pattern detected")
+
+
+def test_elimination_loss_method():
+    print("\n=== Test: Elimination loss method pattern ===")
+    coach = CoachingEngine()
+    all_tips = []
+    for rnd in range(1, 5):
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True)))
+        all_tips.extend(coach.process(make_payload(rnd, "live", team="CT", defusekit=True)))
+        all_tips.extend(
+            coach.process(
+                make_payload(
+                    rnd,
+                    "over",
+                    team="CT",
+                    win_team="T",
+                    defusekit=True,
+                    round_wins={str(rnd): "t_win_elimination"},
+                )
+            )
+        )
+    all_tips.extend(coach.process(make_payload(5, "freezetime", team="CT", defusekit=True)))
+    assert any("elimination" in t.lower() for t in all_tips), (
+        f"Expected elimination loss tip, got: {all_tips}"
+    )
+    print("  PASS: elimination loss method pattern detected")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -665,3 +720,5 @@ if __name__ == "__main__":
     test_no_primary_on_buy_round()
     test_no_primary_tip_not_on_eco()
     test_knife_death()
+    test_bomb_plant_loss_method()
+    test_elimination_loss_method()
