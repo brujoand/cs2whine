@@ -11,6 +11,8 @@ SAVE_EQUIP_THRESHOLD = 500
 FORCE_BUY_EQUIP_THRESHOLD = 2000
 FREEZETIME_BUY_WINDOW = 10.0
 LOW_HP_DELAY = 2.0
+RIFLE_BUY_THRESHOLD = 2700
+PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 
 
 @dataclass
@@ -27,6 +29,9 @@ class RoundSnapshot:
     survived: bool = True
     bomb_planted_site: str | None = None
     round_win: bool | None = None
+    has_primary: bool = False
+    active_weapon_type: str = ""
+    weapon_at_death: str = ""
 
 
 class CoachingEngine:
@@ -112,10 +117,17 @@ class CoachingEngine:
 
         phase_time_remaining = phase_countdowns.get("phase_ends_in", None)
 
+        # track weapons
+        weapons = player.get("weapons", {})
+        has_primary, active_type = self._parse_weapons(weapons)
+        self.current_round.has_primary = has_primary
+        self.current_round.active_weapon_type = active_type
+
         # track deaths
         prev_health = self.prev_state.get("health", 100)
         cur_health = player_state.get("health", 100)
         if prev_health > 0 and cur_health == 0:
+            self.current_round.weapon_at_death = active_type
             if phase_time_remaining is not None:
                 elapsed = self.round_duration - phase_time_remaining
             else:
@@ -189,6 +201,16 @@ class CoachingEngine:
             ):
                 self.emitted_tips.add("no_armor")
                 log_tips.append("No armor — buy helmet before upgrading your weapon.")
+
+        if (
+            late_freezetime
+            and not self.current_round.has_primary
+            and money >= RIFLE_BUY_THRESHOLD
+            and self.current_round.equipment_value > SAVE_EQUIP_THRESHOLD
+            and "no_primary" not in self.emitted_tips
+        ):
+            self.emitted_tips.add("no_primary")
+            log_tips.append("No primary weapon — you have enough for a rifle.")
 
         # live tips (during round)
         if round_phase == "live":
@@ -336,6 +358,22 @@ class CoachingEngine:
             )
         else:
             self._reset_pattern("early_death")
+
+        last = self.rounds[-1]
+        if (
+            last.weapon_at_death == "Knife"
+            and not last.survived
+            and last.death_time is not None
+            and last.death_time < 30
+        ):
+            self._emit_pattern(
+                "knife_death",
+                1,
+                "You died with your knife out — slow down on rotates.",
+                tips,
+            )
+        else:
+            self._reset_pattern("knife_death")
 
         # repeated death location
         death_positions = [r.death_position for r in recent[-4:] if r.death_position]
@@ -527,6 +565,19 @@ class CoachingEngine:
                 return "Trading but never surviving — try playing second in."
             return "Got a pick before going down."
         return "On to the next one."
+
+    def _parse_weapons(self, weapons: dict) -> tuple[bool, str]:
+        has_primary = False
+        active_type = ""
+        for w in weapons.values():
+            if not isinstance(w, dict):
+                continue
+            wtype = w.get("type", "")
+            if wtype in PRIMARY_TYPES:
+                has_primary = True
+            if w.get("state") == "active":
+                active_type = wtype
+        return has_primary, active_type
 
     def _pos_to_site(self, pos_str: str) -> str | None:
         if not pos_str:

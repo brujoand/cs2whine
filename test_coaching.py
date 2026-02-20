@@ -9,6 +9,23 @@ class CoachingEngine(_CoachingEngine):
         return live + log
 
 
+DEFAULT_WEAPONS = {
+    "weapon_0": {
+        "name": "weapon_knife",
+        "type": "Knife",
+        "state": "holstered",
+    },
+    "weapon_1": {
+        "name": "weapon_usp_silencer",
+        "type": "Pistol",
+        "state": "active",
+        "ammo_clip": 12,
+        "ammo_clip_max": 12,
+        "ammo_reserve": 24,
+    },
+}
+
+
 def make_payload(
     round_num,
     round_phase,
@@ -27,6 +44,7 @@ def make_payload(
     phase_ends_in=None,
     ct_score=0,
     t_score=0,
+    weapons=None,
 ):
     p = {
         "map": {
@@ -62,6 +80,7 @@ def make_payload(
         "round": {"phase": round_phase},
         "bomb": {},
     }
+    p["player"]["weapons"] = weapons if weapons is not None else DEFAULT_WEAPONS
     if bomb_state:
         p["bomb"] = {"state": bomb_state, "position": bomb_position}
         if bomb_countdown is not None:
@@ -523,6 +542,101 @@ def test_spectated_teammate_stats_ignored():
     print("  PASS: spectated teammate stats ignored")
 
 
+def test_no_primary_on_buy_round():
+    print("\n=== Test: No primary weapon on buy round ===")
+    coach = CoachingEngine()
+    weapons_no_rifle = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
+        "weapon_1": {
+            "name": "weapon_usp_silencer",
+            "type": "Pistol",
+            "state": "active",
+            "ammo_clip": 12,
+        },
+    }
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            2,
+            "freezetime",
+            team="CT",
+            money=5000,
+            equip_value=1000,
+            defusekit=True,
+            phase_ends_in=5.0,
+            weapons=weapons_no_rifle,
+        )
+    )
+    assert any("primary" in t.lower() for t in tips), f"Expected no-primary tip, got: {tips}"
+    print("  PASS: no primary weapon warning on buy round")
+
+
+def test_no_primary_tip_not_on_eco():
+    print("\n=== Test: No primary tip suppressed on eco ===")
+    coach = CoachingEngine()
+    weapons_no_rifle = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
+        "weapon_1": {
+            "name": "weapon_usp_silencer",
+            "type": "Pistol",
+            "state": "active",
+        },
+    }
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    coach.process(make_payload(1, "live", team="CT", defusekit=True))
+    coach.process(make_payload(1, "over", team="CT", win_team="T", defusekit=True))
+    tips = coach.process(
+        make_payload(
+            2,
+            "freezetime",
+            team="CT",
+            money=3000,
+            equip_value=300,
+            defusekit=True,
+            phase_ends_in=5.0,
+            weapons=weapons_no_rifle,
+        )
+    )
+    assert not any("primary" in t.lower() for t in tips), f"Should not warn on eco round: {tips}"
+    print("  PASS: no primary tip suppressed on eco")
+
+
+def test_knife_death():
+    print("\n=== Test: Knife death warning ===")
+    coach = CoachingEngine()
+    knife_active = {
+        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "active"},
+        "weapon_1": {
+            "name": "weapon_ak47",
+            "type": "Rifle",
+            "state": "holstered",
+        },
+    }
+    all_tips = []
+    for rnd in range(1, 4):
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="T")))
+        all_tips.extend(coach.process(make_payload(rnd, "live", team="T", weapons=knife_active)))
+        all_tips.extend(
+            coach.process(
+                make_payload(
+                    rnd,
+                    "live",
+                    team="T",
+                    health=0,
+                    deaths=rnd,
+                    weapons=knife_active,
+                    phase_ends_in=100.0,
+                )
+            )
+        )
+        all_tips.extend(coach.process(make_payload(rnd, "over", team="T", health=0, win_team="CT")))
+    all_tips.extend(coach.process(make_payload(4, "freezetime", team="T")))
+    assert any("knife" in t.lower() for t in all_tips), f"Expected knife death tip, got: {all_tips}"
+    print("  PASS: knife death warning triggered")
+
+
 if __name__ == "__main__":
     test_early_deaths()
     test_same_spot()
@@ -548,3 +662,6 @@ if __name__ == "__main__":
     test_context_comment_repeated_zero_kills()
     test_context_comment_repeated_trade_deaths()
     test_spectated_teammate_stats_ignored()
+    test_no_primary_on_buy_round()
+    test_no_primary_tip_not_on_eco()
+    test_knife_death()
