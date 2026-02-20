@@ -471,7 +471,7 @@ def test_eco_round_detection():
             2,
             "freezetime",
             team="CT",
-            money=1500,
+            money=2500,
             equip_value=800,
             defusekit=True,
             phase_ends_in=5.0,
@@ -590,6 +590,27 @@ def test_freezetime_tips_are_live():
     )
     assert not any("armor" in t.lower() for t in log), f"Armor tip should not be in log_tips: {log}"
     print("  PASS: freezetime tips go to live_tips")
+
+
+def test_pattern_cooldown():
+    print("\n=== Test: Pattern cooldown prevents spam ===")
+    coach = CoachingEngine()
+    all_tips = []
+    for rnd in range(1, 8):
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", defusekit=True)))
+        coach.process(make_payload(rnd, "live", defusekit=True))
+        coach.process(
+            make_payload(rnd, "live", health=0, deaths=rnd, defusekit=True, phase_ends_in=100.0)
+        )
+        coach.process(make_payload(rnd, "over", health=0, deaths=rnd, win_team="T", defusekit=True))
+    all_tips.extend(coach.process(make_payload(8, "freezetime", defusekit=True)))
+    loss_streak_tips = [t for t in all_tips if "loss streak" in t.lower()]
+    assert len(loss_streak_tips) <= 2, (
+        f"Expected at most 2 loss streak tips (cooldown), got "
+        f"{len(loss_streak_tips)}: {loss_streak_tips}"
+    )
+    assert len(loss_streak_tips) >= 1, "Expected at least 1 loss streak tip"
+    print(f"  PASS: {len(loss_streak_tips)} loss streak tips (cooldown working)")
 
 
 def test_context_comment_repeated_zero_kills():
@@ -955,6 +976,7 @@ if __name__ == "__main__":
     test_flash_warning()
     test_retake_wait()
     test_freezetime_tips_are_live()
+    test_pattern_cooldown()
     test_context_comment_repeated_zero_kills()
     test_context_comment_repeated_trade_deaths()
     test_spectated_teammate_stats_ignored()
