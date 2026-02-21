@@ -41,7 +41,12 @@ def gsi_callback():
     phase = round_data.get("phase", map_data.get("phase", "?"))
     team = player.get("team", "?")
     health = player.get("state", {}).get("health", "?")
-    gui.set_status(f"[R{round_num}] {phase} | {team} | hp:{health}")
+    status = f"[R{round_num}] {phase} | {team} | hp:{health}"
+    if gui.is_debug():
+        pos_raw = player.get("position", "")
+        zone = coach._current_zone or "?"
+        status += f" | pos:({pos_raw}) zone:{zone}"
+    gui.set_status(status)
 
     live_tips, log_tips = coach.process(data)
 
