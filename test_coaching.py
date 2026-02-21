@@ -177,6 +177,39 @@ def test_same_spot():
     else:
         print("  NO TIPS")
 
+    assert any("A Short" in t for t in all_tips), (
+        f"Expected zone name 'A Short' in death location tip, got: {all_tips}"
+    )
+    print("  PASS: death location tip includes zone name")
+
+
+def test_zone_lookup():
+    print("\n=== Test: Zone lookup ===")
+    from map_zones import get_zone, load_zones
+
+    zones = load_zones()
+    assert zones, "zones should not be empty"
+
+    # known position in de_dust2 A Short
+    zone = get_zone(zones, "de_dust2", (800.0, 0.0, 0.0))
+    assert zone == "A Short", f"Expected 'A Short', got {zone!r}"
+    print(f"  PASS: (800, 0, 0) on de_dust2 -> {zone!r}")
+
+    # known position in de_dust2 B Site
+    zone = get_zone(zones, "de_dust2", (-2100.0, 2000.0, 0.0))
+    assert zone == "B Site", f"Expected 'B Site', got {zone!r}"
+    print(f"  PASS: (-2100, 2000, 0) on de_dust2 -> {zone!r}")
+
+    # position outside all zones
+    zone = get_zone(zones, "de_dust2", (99999.0, 99999.0, 99999.0))
+    assert zone is None, f"Expected None for out-of-bounds, got {zone!r}"
+    print("  PASS: out-of-bounds returns None")
+
+    # unknown map
+    zone = get_zone(zones, "de_unknown", (0.0, 0.0, 0.0))
+    assert zone is None, f"Expected None for unknown map, got {zone!r}"
+    print("  PASS: unknown map returns None")
+
 
 def test_bomb_pattern():
     print("\n=== Test: Bomb site pattern ===")
@@ -1035,6 +1068,7 @@ if __name__ == "__main__":
     test_elimination_loss_method()
     test_moving_kill_detection()
     test_parse_vector()
+    test_zone_lookup()
     test_damage_hit_many_finished_none()
     test_98_damage_tip()
     test_exposed_to_many_angles()
