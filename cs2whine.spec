@@ -5,6 +5,7 @@ a = Analysis(
     datas=[
         ('gamestate_integration_coach.cfg', '.'),
         ('config.json', '.'),
+        ('maps/zones.json', 'maps'),
     ],
     hiddenimports=[
         'windows_toasts',

@@ -23,5 +23,8 @@ jobs:
       - name: Format check
         run: uv run ruff format --check .
 
+      - name: Verify map pool coverage
+        run: uv run python scripts/verify_mappool.py
+
       - name: Test
         run: uv run python test_coaching.py

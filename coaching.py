@@ -1,6 +1,8 @@
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
+
+from map_zones import get_zone, load_zones
 
 DEFUSE_TIME_KIT = 5.0
 DEFUSE_TIME_NO_KIT = 10.0
@@ -29,6 +31,7 @@ class RoundSnapshot:
     phase: str = ""
     death_time: float | None = None
     death_position: tuple | None = None
+    death_zone: str | None = None
     kills: int = 0
     hs_kills: int = 0
     equipment_value: int = 0
@@ -64,6 +67,9 @@ class CoachingEngine:
         self._prev_t_score: int = 0
         self._position_history: deque[tuple[tuple[float, float, float], float]] = deque(maxlen=20)
         self._prev_round_kills: int = 0
+        self._zones: dict = load_zones()
+        self._current_zone: str | None = None
+        self._zone_visit_counts: Counter = Counter()
 
     def _reset_match(self):
         self.rounds.clear()
@@ -80,6 +86,8 @@ class CoachingEngine:
         self._prev_t_score = 0
         self._position_history.clear()
         self._prev_round_kills = 0
+        self._current_zone = None
+        self._zone_visit_counts.clear()
 
     def process(self, data: dict) -> tuple[list[str], list[str]]:
         live_tips: list[str] = []
@@ -160,6 +168,8 @@ class CoachingEngine:
             self.emitted_tips.clear()
             self._position_history.clear()
             self._prev_round_kills = 0
+            self._current_zone = None
+            self._zone_visit_counts.clear()
 
         if not self.current_round:
             self.current_round = RoundSnapshot(round_num=current_round_num)
@@ -178,6 +188,9 @@ class CoachingEngine:
         pos = self._parse_vector(player.get("position", ""))
         if pos and round_phase == "live":
             self._position_history.append((pos, time.monotonic()))
+            self._current_zone = get_zone(self._zones, self.match_map, pos)
+            if self._current_zone:
+                self._zone_visit_counts[self._current_zone] += 1
 
         # detect moving kills
         cur_kills = player_state.get("round_kills", 0)
@@ -203,6 +216,9 @@ class CoachingEngine:
             self.current_round.death_time = elapsed
             self.current_round.survived = False
             self.current_round.death_position = pos
+            self.current_round.death_zone = (
+                get_zone(self._zones, self.match_map, pos) if pos else None
+            )
 
         # once dead this round, stop updating stats from spectated teammates
         if not self.current_round.survived and cur_health > 0:
@@ -398,7 +414,11 @@ class CoachingEngine:
             and "awp_playstyle" not in self.emitted_tips
         ):
             self.emitted_tips.add("awp_playstyle")
-            tips.append("AWP out — hold an angle, don't peek.")
+            zone = self._current_zone
+            if zone:
+                tips.append(f"AWP at {zone} — hold an angle, don't peek.")
+            else:
+                tips.append("AWP out — hold an angle, don't peek.")
 
         # SMG on gun round
         if (
@@ -481,12 +501,13 @@ class CoachingEngine:
 
         moving_kill_rounds = sum(1 for r in recent[-3:] if r.moving_kills > 0)
         if moving_kill_rounds >= 2:
-            self._emit_pattern(
-                "moving_kills",
-                moving_kill_rounds,
-                "You're shooting while moving — stop before you fire with rifles.",
-                tips,
+            zone = self.rounds[-1].death_zone if self.rounds else None
+            msg = (
+                f"You're shooting while moving at {zone} — stop before you fire with rifles."
+                if zone
+                else "You're shooting while moving — stop before you fire with rifles."
             )
+            self._emit_pattern("moving_kills", moving_kill_rounds, msg, tips)
         else:
             self._reset_pattern("moving_kills")
 
@@ -495,13 +516,20 @@ class CoachingEngine:
         if len(death_positions) >= 2:
             clusters = self._find_clusters(death_positions, threshold=500)
             if clusters:
-                self._emit_pattern(
-                    "death_location",
-                    len(clusters),
-                    "You keep dying in the same area. "
-                    "They probably have it locked down — try a different route.",
-                    tips,
-                )
+                death_zones = [r.death_zone for r in recent[-4:] if r.death_zone]
+                if death_zones:
+                    zone_counts = Counter(death_zones)
+                    top_zone = zone_counts.most_common(1)[0][0]
+                    msg = (
+                        f"You keep dying at {top_zone} — "
+                        "they have it locked down, try a different approach."
+                    )
+                else:
+                    msg = (
+                        "You keep dying in the same area. "
+                        "They probably have it locked down — try a different route."
+                    )
+                self._emit_pattern("death_location", len(clusters), msg, tips)
             else:
                 self._reset_pattern("death_location")
         else:
@@ -545,8 +573,6 @@ class CoachingEngine:
         bomb_sites = [r.bomb_planted_site for r in self.rounds if r.bomb_planted_site]
         if len(bomb_sites) >= 4:
             last_4 = bomb_sites[-4:]
-            from collections import Counter
-
             site_counts = Counter(last_4)
             dominant = site_counts.most_common(1)[0]
             if dominant[1] >= 3:
@@ -566,8 +592,6 @@ class CoachingEngine:
         # loss method patterns
         recent_losses = [r for r in recent[-4:] if r.round_win is False and r.win_method]
         if len(recent_losses) >= 3:
-            from collections import Counter
-
             method_counts = Counter(r.win_method for r in recent_losses)
             top_method, top_count = method_counts.most_common(1)[0]
             if top_count >= 3:
@@ -750,4 +774,9 @@ class CoachingEngine:
         coords = self._parse_vector(pos_str)
         if not coords:
             return None
+        zone = get_zone(self._zones, self.match_map, coords)
+        if zone and "A Site" in zone:
+            return "A"
+        if zone and "B Site" in zone:
+            return "B"
         return "A" if coords[0] > 0 else "B"
