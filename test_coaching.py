@@ -957,6 +957,54 @@ def test_parse_vector():
     print("  PASS: _parse_vector works")
 
 
+def test_no_impact_excludes_win_rounds():
+    print("\n=== Test: no_impact excludes win rounds ===")
+
+    def _die(c, rnd, win_team):
+        c.process(make_payload(rnd, "freezetime", team="CT"))
+        c.process(make_payload(rnd, "live", team="CT"))
+        p = make_payload(rnd, "live", health=0, deaths=rnd, team="CT")
+        p["phase_countdowns"] = {"phase_ends_in": 100.0}
+        c.process(p)
+        return c.process(make_payload(rnd, "over", health=0, win_team=win_team, team="CT"))
+
+    coach2 = CoachingEngine()
+    win_round_tips = []
+    for rnd in range(1, 7):
+        win_team = "T" if rnd <= 3 else "CT"
+        tips = _die(coach2, rnd, win_team)
+        if rnd >= 5:
+            win_round_tips.extend(tips)
+    assert not any("without impact" in t.lower() for t in win_round_tips), (
+        f"no_impact should not fire on win rounds, got: {win_round_tips}"
+    )
+    print("  PASS: no_impact does not fire when dying in won rounds")
+
+
+def test_sprint_pattern():
+    print("\n=== Test: Sprint pattern detection ===")
+    from coaching import SPRINT_SPEED_THRESHOLD
+
+    coach = CoachingEngine()
+    all_tips = []
+
+    for rnd in range(1, 7):
+        tips = coach.process(make_payload(rnd, "freezetime", team="CT"))
+        all_tips.extend(tips)
+        coach.process(make_payload(rnd, "live", team="CT"))
+        # Simulate sprinting: inject speed samples after round is live
+        coach._speed_samples = [SPRINT_SPEED_THRESHOLD + 50.0] * 10
+        p = make_payload(rnd, "live", health=0, deaths=rnd, team="CT")
+        p["phase_countdowns"] = {"phase_ends_in": 100.0}
+        coach.process(p)
+        coach.process(make_payload(rnd, "over", health=0, win_team="T", team="CT"))
+
+    assert any("sprinting" in t.lower() for t in all_tips), (
+        f"Expected sprint pattern tip, got: {all_tips}"
+    )
+    print("  PASS: sprint pattern tip triggered")
+
+
 def test_damage_hit_many_finished_none():
     print("\n=== Test: Hit many opponents, finished none ===")
     coach = CoachingEngine()
@@ -1069,6 +1117,8 @@ if __name__ == "__main__":
     test_moving_kill_detection()
     test_parse_vector()
     test_zone_lookup()
+    test_no_impact_excludes_win_rounds()
+    test_sprint_pattern()
     test_damage_hit_many_finished_none()
     test_98_damage_tip()
     test_exposed_to_many_angles()

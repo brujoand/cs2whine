@@ -22,6 +22,9 @@ FORCE_EQUIP_HIGH = 3000
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 MOVING_SPEED_THRESHOLD = 50.0
 RIFLE_MOVING_TYPES = {"Rifle", "SniperRifle"}
+SPRINT_SPEED_THRESHOLD = 200.0
+SPRINT_ROUND_FRACTION = 0.6
+SPRINT_PATTERN_ROUNDS = 3
 RETAKE_BOMB_THRESHOLD = 15.0
 
 
@@ -45,6 +48,7 @@ class RoundSnapshot:
     weapon_at_death: str = ""
     win_method: str = ""
     moving_kills: int = 0
+    sprint_fraction: float = 0.0
     damage_given: list[tuple[str, int, int]] = field(default_factory=list)
     damage_taken: list[tuple[str, int, int]] = field(default_factory=list)
 
@@ -70,6 +74,7 @@ class CoachingEngine:
         self._zones: dict = load_zones()
         self._current_zone: str | None = None
         self._zone_visit_counts: Counter = Counter()
+        self._speed_samples: list[float] = []
 
     def _reset_match(self):
         self.rounds.clear()
@@ -88,6 +93,7 @@ class CoachingEngine:
         self._prev_round_kills = 0
         self._current_zone = None
         self._zone_visit_counts.clear()
+        self._speed_samples.clear()
 
     def process(self, data: dict) -> tuple[list[str], list[str]]:
         live_tips: list[str] = []
@@ -158,6 +164,9 @@ class CoachingEngine:
                         self.current_round.round_win = True
                     elif (ct_score + t_score) > (self._prev_ct_score + self._prev_t_score):
                         self.current_round.round_win = False
+                if self._speed_samples:
+                    sprint = sum(1 for s in self._speed_samples if s >= SPRINT_SPEED_THRESHOLD)
+                    self.current_round.sprint_fraction = sprint / len(self._speed_samples)
                 self.rounds.append(self.current_round)
                 log_tips.extend(self._analyze_on_round_end())
                 self.pending_round_stats = self._format_round_stats(match_stats)
@@ -170,6 +179,7 @@ class CoachingEngine:
             self._prev_round_kills = 0
             self._current_zone = None
             self._zone_visit_counts.clear()
+            self._speed_samples.clear()
 
         if not self.current_round:
             self.current_round = RoundSnapshot(round_num=current_round_num)
@@ -191,6 +201,9 @@ class CoachingEngine:
             self._current_zone = get_zone(self._zones, self.match_map, pos)
             if self._current_zone:
                 self._zone_visit_counts[self._current_zone] += 1
+            spd = self._speed()
+            if spd is not None:
+                self._speed_samples.append(spd)
 
         # detect moving kills
         cur_kills = player_state.get("round_kills", 0)
@@ -627,7 +640,7 @@ class CoachingEngine:
         # dying without impact (consecutive rounds dying with 0 kills)
         consecutive_no_impact = 0
         for r in reversed(recent):
-            if not r.survived and r.kills == 0:
+            if not r.survived and r.kills == 0 and r.round_win is False:
                 consecutive_no_impact += 1
             else:
                 break
@@ -656,6 +669,19 @@ class CoachingEngine:
                 )
             else:
                 self._reset_pattern("low_survival")
+
+        # sprint pattern
+        sprint_rounds = sum(1 for r in recent[-5:] if r.sprint_fraction >= SPRINT_ROUND_FRACTION)
+        if sprint_rounds >= SPRINT_PATTERN_ROUNDS:
+            self._emit_pattern(
+                "sprinting",
+                sprint_rounds,
+                f"You've been sprinting {sprint_rounds} of the last 5 rounds "
+                "— you're predictable and noisy. Walk more.",
+                tips,
+            )
+        else:
+            self._reset_pattern("sprinting")
 
         last = self.rounds[-1]
         if last.damage_given and last.kills == 0:

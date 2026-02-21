@@ -158,6 +158,19 @@ class App:
         )
         self._overlay_cb.pack(side="left")
 
+        self._debug_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            top_frame,
+            text="Debug",
+            variable=self._debug_var,
+            bg="#1e1e1e",
+            fg="#cccccc",
+            selectcolor="#333333",
+            activebackground="#1e1e1e",
+            activeforeground="#cccccc",
+            font=("Consolas", 10),
+        ).pack(side="left", padx=(8, 0))
+
         self._gsi_btn = tk.Button(
             top_frame,
             text="View GSI",
@@ -203,6 +216,9 @@ class App:
 
         self.overlay = Overlay(self._root)
         self.overlay.show_tip("cs2whine overlay active", duration=3.0)
+
+    def is_debug(self) -> bool:
+        return self._debug_var.get()
 
     def _toggle_overlay(self):
         enabled = self._overlay_var.get()
