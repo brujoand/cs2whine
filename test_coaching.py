@@ -86,13 +86,18 @@ def make_payload(
     p["player"]["weapons"] = weapons if weapons is not None else DEFAULT_WEAPONS
     if bomb_state:
         p["bomb"] = {"state": bomb_state}
+        if bomb_state == "planted":
+            p["round"]["bomb"] = "planted"
         if bomb_countdown is not None:
-            p["bomb"]["countdown"] = bomb_countdown
+            p["phase_countdowns"] = {
+                "phase": "bomb",
+                "phase_ends_in": float(bomb_countdown),
+            }
     if round_wins:
         p["map"]["round_wins"] = round_wins
     if win_team:
         p["round"]["win_team"] = win_team
-    if phase_ends_in is not None:
+    if phase_ends_in is not None and bomb_countdown is None:
         p["phase_countdowns"] = {"phase_ends_in": phase_ends_in}
     return p
 

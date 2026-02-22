@@ -43,7 +43,11 @@ def gsi_callback():
     health = player.get("state", {}).get("health", "?")
     status = f"[R{round_num}] {phase} | {team} | hp:{health}"
     if gui.is_debug():
-        status += " | debug:on"
+        round_bomb = data.get("round", {}).get("bomb", "")
+        pc = data.get("phase_countdowns", {})
+        pc_phase = pc.get("phase", "")
+        pc_time = pc.get("phase_ends_in", "-")
+        status += f" | bomb:{round_bomb or 'none'} pc:{pc_phase}/{pc_time}"
     gui.set_status(status)
 
     live_tips, log_tips = coach.process(data)
