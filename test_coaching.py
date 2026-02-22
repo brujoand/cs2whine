@@ -35,10 +35,8 @@ def make_payload(
     health=100,
     deaths=0,
     kills=0,
-    position="0, 0, 0",
     equip_value=3000,
     bomb_state="",
-    bomb_position="",
     bomb_countdown=None,
     win_team="",
     team="CT",
@@ -64,7 +62,6 @@ def make_payload(
             "steamid": "76561198000000000",
             "name": "TestPlayer",
             "team": team,
-            "position": position,
             "state": {
                 "health": health,
                 "armor": 100,
@@ -88,7 +85,7 @@ def make_payload(
     }
     p["player"]["weapons"] = weapons if weapons is not None else DEFAULT_WEAPONS
     if bomb_state:
-        p["bomb"] = {"state": bomb_state, "position": bomb_position}
+        p["bomb"] = {"state": bomb_state}
         if bomb_countdown is not None:
             p["bomb"]["countdown"] = bomb_countdown
     if round_wins:
@@ -118,7 +115,6 @@ def test_early_deaths():
                 "live",
                 health=0,
                 deaths=rnd,
-                position="1200, 300, 0",
                 defusekit=True,
                 phase_ends_in=100.0,
             )
@@ -139,98 +135,27 @@ def test_early_deaths():
         for r in coach.rounds:
             print(
                 f"    Round {r.round_num}: survived={r.survived}, "
-                f"death_time={r.death_time}, death_pos={r.death_position}, "
-                f"win={r.round_win}"
+                f"death_time={r.death_time}, win={r.round_win}"
             )
 
 
-def test_same_spot():
-    print("\n=== Test: Same spot deaths ===")
-    coach = CoachingEngine()
-    all_tips = []
-
-    for rnd in range(1, 7):
-        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
-        all_tips.extend(tips)
-        tips = coach.process(make_payload(rnd, "live", defusekit=True))
-        all_tips.extend(tips)
-        tips = coach.process(
-            make_payload(
-                rnd,
-                "live",
-                health=0,
-                deaths=rnd,
-                position="800, 200, 0",
-                defusekit=True,
-                phase_ends_in=100.0,
-            )
-        )
-        all_tips.extend(tips)
-        tips = coach.process(
-            make_payload(rnd, "over", health=0, deaths=rnd, win_team="T", defusekit=True)
-        )
-        all_tips.extend(tips)
-
-    if all_tips:
-        for t in all_tips:
-            print(f"  TIP: {t}")
-    else:
-        print("  NO TIPS")
-
-    assert any("A Short" in t for t in all_tips), (
-        f"Expected zone name 'A Short' in death location tip, got: {all_tips}"
-    )
-    print("  PASS: death location tip includes zone name")
-
-
-def test_zone_lookup():
-    print("\n=== Test: Zone lookup ===")
-    from map_zones import get_zone, load_zones
-
-    zones = load_zones()
-    assert zones, "zones should not be empty"
-
-    # known position in de_dust2 A Short
-    zone = get_zone(zones, "de_dust2", (800.0, 0.0, 0.0))
-    assert zone == "A Short", f"Expected 'A Short', got {zone!r}"
-    print(f"  PASS: (800, 0, 0) on de_dust2 -> {zone!r}")
-
-    # known position in de_dust2 B Site
-    zone = get_zone(zones, "de_dust2", (-2100.0, 2000.0, 0.0))
-    assert zone == "B Site", f"Expected 'B Site', got {zone!r}"
-    print(f"  PASS: (-2100, 2000, 0) on de_dust2 -> {zone!r}")
-
-    # position outside all zones
-    zone = get_zone(zones, "de_dust2", (99999.0, 99999.0, 99999.0))
-    assert zone is None, f"Expected None for out-of-bounds, got {zone!r}"
-    print("  PASS: out-of-bounds returns None")
-
-    # unknown map
-    zone = get_zone(zones, "de_unknown", (0.0, 0.0, 0.0))
-    assert zone is None, f"Expected None for unknown map, got {zone!r}"
-    print("  PASS: unknown map returns None")
-
-
-def test_bomb_pattern():
-    print("\n=== Test: Bomb site pattern ===")
+def test_bomb_pressure():
+    print("\n=== Test: Bomb pressure pattern ===")
     coach = CoachingEngine()
     all_tips = []
 
     for rnd in range(1, 8):
-        tips = coach.process(make_payload(rnd, "freezetime", defusekit=True))
-        all_tips.extend(tips)
-        tips = coach.process(
-            make_payload(
-                rnd,
-                "live",
-                bomb_state="planted",
-                bomb_position="500, 100, 0",
-                defusekit=True,
+        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="CT", defusekit=True)))
+        all_tips.extend(
+            coach.process(
+                make_payload(rnd, "live", team="CT", bomb_state="planted", defusekit=True)
             )
         )
-        all_tips.extend(tips)
-        tips = coach.process(make_payload(rnd, "over", win_team="T", defusekit=True))
-        all_tips.extend(tips)
+        all_tips.extend(
+            coach.process(make_payload(rnd, "over", team="CT", win_team="T", defusekit=True))
+        )
+
+    all_tips.extend(coach.process(make_payload(8, "freezetime", team="CT", defusekit=True)))
 
     if all_tips:
         for t in all_tips:
@@ -239,7 +164,12 @@ def test_bomb_pattern():
         print("  NO TIPS")
         print(f"  Rounds: {len(coach.rounds)}")
         for r in coach.rounds:
-            print(f"    Round {r.round_num}: bomb_site={r.bomb_planted_site}")
+            print(f"    Round {r.round_num}: bomb_planted={r.bomb_planted}")
+
+    assert any("planted the bomb" in t.lower() for t in all_tips), (
+        f"Expected bomb pressure tip, got: {all_tips}"
+    )
+    print("  PASS: bomb pressure pattern detected")
 
 
 def test_defuse_too_late_no_kit():
@@ -318,7 +248,6 @@ def test_no_time_pressure_when_bomb_planted():
             team="T",
             phase_ends_in=10.0,
             bomb_state="planted",
-            bomb_position="500, 100, 0",
         )
     )
     assert not any("15s" in t for t in tips), f"Should not tip when planted: {tips}"
@@ -377,15 +306,6 @@ def test_no_premature_save_late():
 
 def test_no_armor_anti_eco():
     print("\n=== Test: No armor on anti-eco ===")
-    coach = CoachingEngine()
-    # round 1: win
-    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
-    coach.process(make_payload(1, "live", team="CT", defusekit=True))
-    coach.process(make_payload(1, "over", team="CT", win_team="CT", defusekit=True))
-    # round 2: freezetime, no armor
-    tips = coach.process(make_payload(2, "freezetime", team="CT", defusekit=True, money=4000))
-    # the test payload has armor=100 by default in player_state, need to override
-    # let me send a payload with armor=0
     coach2 = CoachingEngine()
     coach2.process(make_payload(1, "freezetime", team="CT", defusekit=True))
     coach2.process(make_payload(1, "live", team="CT", defusekit=True))
@@ -603,7 +523,6 @@ def test_retake_wait():
             team="CT",
             defusekit=True,
             bomb_state="planted",
-            bomb_position="500, 100, 0",
             bomb_countdown=30.0,
         )
     )
@@ -902,61 +821,6 @@ def test_elimination_loss_method():
     print("  PASS: elimination loss method pattern detected")
 
 
-def test_moving_kill_detection():
-    print("\n=== Test: Moving kill detection ===")
-    coach = CoachingEngine()
-    rifle_weapons = {
-        "weapon_0": {"name": "weapon_knife", "type": "Knife", "state": "holstered"},
-        "weapon_1": {"name": "weapon_ak47", "type": "Rifle", "state": "active"},
-    }
-    all_tips = []
-    for rnd in range(1, 4):
-        all_tips.extend(coach.process(make_payload(rnd, "freezetime", team="T")))
-        # simulate moving: two positions far apart in quick succession
-        coach.process(
-            make_payload(
-                rnd,
-                "live",
-                team="T",
-                position="0, 0, 0",
-                kills=0,
-                weapons=rifle_weapons,
-            )
-        )
-        # inject a close timestamp to simulate fast movement
-        if coach._position_history:
-            last_pos, last_t = coach._position_history[-1]
-            coach._position_history[-1] = (last_pos, last_t - 0.2)
-        all_tips.extend(
-            coach.process(
-                make_payload(
-                    rnd,
-                    "live",
-                    team="T",
-                    position="500, 0, 0",
-                    kills=1,
-                    weapons=rifle_weapons,
-                )
-            )
-        )
-        assert coach.current_round.moving_kills > 0, f"Round {rnd}: expected moving kill detected"
-        all_tips.extend(coach.process(make_payload(rnd, "over", team="T", kills=1, win_team="T")))
-    all_tips.extend(coach.process(make_payload(4, "freezetime", team="T")))
-    assert any("moving" in t.lower() for t in all_tips), (
-        f"Expected moving kills tip, got: {all_tips}"
-    )
-    print("  PASS: moving kill detection triggered")
-
-
-def test_parse_vector():
-    print("\n=== Test: _parse_vector ===")
-    coach = CoachingEngine()
-    assert coach._parse_vector("1.0, 2.0, 3.0") == (1.0, 2.0, 3.0)
-    assert coach._parse_vector("") is None
-    assert coach._parse_vector("invalid") is None
-    print("  PASS: _parse_vector works")
-
-
 def test_no_impact_excludes_win_rounds():
     print("\n=== Test: no_impact excludes win rounds ===")
 
@@ -979,30 +843,6 @@ def test_no_impact_excludes_win_rounds():
         f"no_impact should not fire on win rounds, got: {win_round_tips}"
     )
     print("  PASS: no_impact does not fire when dying in won rounds")
-
-
-def test_sprint_pattern():
-    print("\n=== Test: Sprint pattern detection ===")
-    from coaching import SPRINT_SPEED_THRESHOLD
-
-    coach = CoachingEngine()
-    all_tips = []
-
-    for rnd in range(1, 7):
-        tips = coach.process(make_payload(rnd, "freezetime", team="CT"))
-        all_tips.extend(tips)
-        coach.process(make_payload(rnd, "live", team="CT"))
-        # Simulate sprinting: inject speed samples after round is live
-        coach._speed_samples = [SPRINT_SPEED_THRESHOLD + 50.0] * 10
-        p = make_payload(rnd, "live", health=0, deaths=rnd, team="CT")
-        p["phase_countdowns"] = {"phase_ends_in": 100.0}
-        coach.process(p)
-        coach.process(make_payload(rnd, "over", health=0, win_team="T", team="CT"))
-
-    assert any("sprinting" in t.lower() for t in all_tips), (
-        f"Expected sprint pattern tip, got: {all_tips}"
-    )
-    print("  PASS: sprint pattern tip triggered")
 
 
 def test_damage_hit_many_finished_none():
@@ -1076,8 +916,7 @@ def test_exposed_to_many_angles():
 
 if __name__ == "__main__":
     test_early_deaths()
-    test_same_spot()
-    test_bomb_pattern()
+    test_bomb_pressure()
     test_defuse_too_late_no_kit()
     test_defuse_still_possible_with_kit()
     test_defuse_too_late_with_kit()
@@ -1114,11 +953,7 @@ if __name__ == "__main__":
     test_knife_death()
     test_bomb_plant_loss_method()
     test_elimination_loss_method()
-    test_moving_kill_detection()
-    test_parse_vector()
-    test_zone_lookup()
     test_no_impact_excludes_win_rounds()
-    test_sprint_pattern()
     test_damage_hit_many_finished_none()
     test_98_damage_tip()
     test_exposed_to_many_angles()
