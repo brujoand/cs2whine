@@ -87,7 +87,7 @@ def make_payload(
     if bomb_state:
         p["bomb"] = {"state": bomb_state}
         if bomb_countdown is not None:
-            p["bomb"]["countdown"] = bomb_countdown
+            p["bomb"]["countdown"] = str(float(bomb_countdown))
     if round_wins:
         p["map"]["round_wins"] = round_wins
     if win_team:
