@@ -337,7 +337,11 @@ class CoachingEngine:
 
         # too late to defuse
         bomb_state = bomb.get("state", "")
-        bomb_countdown = bomb.get("countdown", None)
+        raw_countdown = bomb.get("countdown", None)
+        try:
+            bomb_countdown = float(raw_countdown) if raw_countdown else None
+        except (ValueError, TypeError):
+            bomb_countdown = None
         if (
             bomb_state == "planted"
             and bomb_countdown is not None
