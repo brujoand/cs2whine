@@ -198,9 +198,11 @@ class CoachingEngine:
         money = player_state.get("money", 0)
         self.current_round.team_money = money
 
-        # track bomb plant
-        bomb_state = bomb.get("state", "")
-        if bomb_state == "planted":
+        # track bomb plant — round.bomb is reliable for live players; top-level bomb.state
+        # may not be sent at all
+        round_bomb = round_data.get("bomb", "")
+        bomb_state = bomb.get("state", "") or round_bomb
+        if bomb_state == "planted" or round_bomb == "planted":
             self.current_round.bomb_planted = True
 
         late_freezetime = (
@@ -267,7 +269,12 @@ class CoachingEngine:
 
         # live tips (during round)
         if round_phase == "live":
-            live_tips.extend(self._live_tips(player_state, match_stats, bomb, phase_time_remaining))
+            # bomb countdown comes from phase_countdowns when phase == "bomb"
+            pc_phase = phase_countdowns.get("phase", "")
+            bomb_countdown = phase_time_remaining if pc_phase == "bomb" else None
+            live_tips.extend(
+                self._live_tips(player_state, bomb_state, bomb_countdown, phase_time_remaining)
+            )
 
         # round over
         if round_phase == "over":
@@ -297,13 +304,14 @@ class CoachingEngine:
     def _live_tips(
         self,
         player_state: dict,
-        match_stats: dict,
-        bomb: dict,
+        bomb_state: str,
+        bomb_countdown: float | None,
         phase_time_remaining: float | None,
     ) -> list[str]:
         tips = []
 
         cur_health = player_state.get("health", 100)
+        bomb_planted = bomb_state == "planted"
 
         # low health warning (only if alive at low hp for a sustained period)
         if 0 < cur_health <= LOW_HP_THRESHOLD:
@@ -323,7 +331,7 @@ class CoachingEngine:
             and self.my_team == "T"
             and cur_health > 0
             and player_state.get("equip_value", 0) < SAVE_EQUIP_THRESHOLD
-            and bomb.get("state", "") != "planted"
+            and not bomb_planted
             and "premature_save" not in self.emitted_tips
         ):
             self.emitted_tips.add("premature_save")
@@ -336,17 +344,11 @@ class CoachingEngine:
             tips.append("Full flash — back off and reposition.")
 
         # too late to defuse
-        bomb_state = bomb.get("state", "")
-        raw_countdown = bomb.get("countdown", None)
-        try:
-            bomb_countdown = float(raw_countdown) if raw_countdown else None
-        except (ValueError, TypeError):
-            bomb_countdown = None
         if (
-            bomb_state == "planted"
+            bomb_planted
             and bomb_countdown is not None
             and self.my_team == "CT"
-            and player_state.get("health", 0) > 0
+            and cur_health > 0
             and "defuse_too_late" not in self.emitted_tips
         ):
             has_kit = player_state.get("defusekit", False)
@@ -360,7 +362,7 @@ class CoachingEngine:
             phase_time_remaining is not None
             and phase_time_remaining < TIME_PRESSURE_THRESHOLD
             and self.my_team == "T"
-            and bomb_state != "planted"
+            and not bomb_planted
             and "time_pressure" not in self.emitted_tips
         ):
             self.emitted_tips.add("time_pressure")
@@ -390,7 +392,7 @@ class CoachingEngine:
 
         # CT retake: bomb planted, don't solo
         if (
-            bomb_state == "planted"
+            bomb_planted
             and self.my_team == "CT"
             and cur_health > 0
             and bomb_countdown is not None
