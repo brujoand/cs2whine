@@ -19,6 +19,7 @@ FORCE_EQUIP_LOW = 1500
 FORCE_EQUIP_HIGH = 3000
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 RETAKE_BOMB_THRESHOLD = 15.0
+BOMB_TIMER = 40.0
 BOMB_COUNTDOWN_THRESHOLDS = (20, 15, 10, 7, 5, 4, 3, 2, 1)
 
 
@@ -57,6 +58,7 @@ class CoachingEngine:
         self.pending_round_stats: str | None = None
         self.pending_round_comment: str | None = None
         self._low_hp_since: float | None = None
+        self._bomb_plant_time: float | None = None
         self._prev_ct_score: int = 0
         self._prev_t_score: int = 0
 
@@ -71,6 +73,7 @@ class CoachingEngine:
         self.pending_round_stats = None
         self.pending_round_comment = None
         self._low_hp_since = None
+        self._bomb_plant_time = None
         self._prev_ct_score = 0
         self._prev_t_score = 0
 
@@ -151,6 +154,7 @@ class CoachingEngine:
             self._prev_t_score = t_score
             self.current_round = RoundSnapshot(round_num=current_round_num)
             self.emitted_tips.clear()
+            self._bomb_plant_time = None
 
         if not self.current_round:
             self.current_round = RoundSnapshot(round_num=current_round_num)
@@ -204,6 +208,8 @@ class CoachingEngine:
         bomb_state = bomb.get("state", "") or round_bomb
         if bomb_state == "planted" or round_bomb == "planted":
             self.current_round.bomb_planted = True
+            if self._bomb_plant_time is None:
+                self._bomb_plant_time = time.monotonic()
 
         late_freezetime = (
             round_phase == "freezetime"
@@ -269,9 +275,15 @@ class CoachingEngine:
 
         # live tips (during round)
         if round_phase == "live":
-            # bomb countdown comes from phase_countdowns when phase == "bomb"
+            # prefer GSI countdown if available, fall back to wall-clock estimate
             pc_phase = phase_countdowns.get("phase", "")
-            bomb_countdown = phase_time_remaining if pc_phase == "bomb" else None
+            if pc_phase == "bomb" and phase_time_remaining is not None:
+                bomb_countdown = phase_time_remaining
+            elif self._bomb_plant_time is not None:
+                elapsed = time.monotonic() - self._bomb_plant_time
+                bomb_countdown = max(0.0, BOMB_TIMER - elapsed)
+            else:
+                bomb_countdown = None
             live_tips.extend(
                 self._live_tips(player_state, bomb_state, bomb_countdown, phase_time_remaining)
             )
