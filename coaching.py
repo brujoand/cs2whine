@@ -19,6 +19,7 @@ FORCE_EQUIP_LOW = 1500
 FORCE_EQUIP_HIGH = 3000
 PRIMARY_TYPES = {"Rifle", "SniperRifle", "Shotgun", "Submachine Gun", "Machine Gun"}
 RETAKE_BOMB_THRESHOLD = 15.0
+BOMB_COUNTDOWN_THRESHOLDS = (20, 15, 10, 7, 5, 4, 3, 2, 1)
 
 
 @dataclass
@@ -394,6 +395,24 @@ class CoachingEngine:
         ):
             self.emitted_tips.add("retake_wait")
             tips.append("Bomb planted — wait for teammates, don't solo retake.")
+
+        # bomb countdown overlay (both sides, key thresholds only)
+        if bomb_state == "planted" and bomb_countdown is not None:
+            secs = int(bomb_countdown)
+            for threshold in BOMB_COUNTDOWN_THRESHOLDS:
+                key = f"bomb_countdown_{threshold}"
+                if secs <= threshold and key not in self.emitted_tips:
+                    self.emitted_tips.add(key)
+                    if self.my_team == "CT":
+                        has_kit = player_state.get("defusekit", False)
+                        required = DEFUSE_TIME_KIT if has_kit else DEFUSE_TIME_NO_KIT
+                        if secs > required:
+                            tips.append(f"BOMB: {secs}s — get to it!")
+                        else:
+                            tips.append(f"BOMB: {secs}s — too late, save your gun.")
+                    else:
+                        tips.append(f"BOMB: {secs}s")
+                    break
 
         return tips
 

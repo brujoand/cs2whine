@@ -845,6 +845,46 @@ def test_no_impact_excludes_win_rounds():
     print("  PASS: no_impact does not fire when dying in won rounds")
 
 
+def test_bomb_countdown_ct():
+    print("\n=== Test: Bomb countdown CT side ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="CT", defusekit=True))
+    # 20s — first threshold
+    tips = coach.process(
+        make_payload(
+            1, "live", team="CT", defusekit=True, bomb_state="planted", bomb_countdown=20.0
+        )  # noqa: E501
+    )
+    assert any("BOMB: 20s" in t for t in tips), f"Expected 20s countdown, got: {tips}"
+    # 10s
+    tips = coach.process(
+        make_payload(
+            1, "live", team="CT", defusekit=True, bomb_state="planted", bomb_countdown=10.0
+        )  # noqa: E501
+    )
+    assert any("BOMB: 10s" in t for t in tips), f"Expected 10s countdown, got: {tips}"
+    # same threshold again — should not re-fire
+    tips = coach.process(
+        make_payload(1, "live", team="CT", defusekit=True, bomb_state="planted", bomb_countdown=9.5)
+    )
+    assert not any("BOMB: 10s" in t for t in tips), f"Should not re-fire at 10s: {tips}"
+    print("  PASS: CT bomb countdown fires at thresholds")
+
+
+def test_bomb_countdown_t():
+    print("\n=== Test: Bomb countdown T side ===")
+    coach = CoachingEngine()
+    coach.process(make_payload(1, "freezetime", team="T"))
+    tips = coach.process(
+        make_payload(1, "live", team="T", bomb_state="planted", bomb_countdown=5.0)
+    )
+    assert any("BOMB: 5s" in t for t in tips), f"Expected 5s countdown tip, got: {tips}"
+    assert not any("get to it" in t.lower() for t in tips), (
+        f"T-side should not see CT framing: {tips}"
+    )
+    print("  PASS: T-side bomb countdown fires without CT framing")
+
+
 def test_damage_hit_many_finished_none():
     print("\n=== Test: Hit many opponents, finished none ===")
     coach = CoachingEngine()
@@ -954,6 +994,8 @@ if __name__ == "__main__":
     test_bomb_plant_loss_method()
     test_elimination_loss_method()
     test_no_impact_excludes_win_rounds()
+    test_bomb_countdown_ct()
+    test_bomb_countdown_t()
     test_damage_hit_many_finished_none()
     test_98_damage_tip()
     test_exposed_to_many_angles()
