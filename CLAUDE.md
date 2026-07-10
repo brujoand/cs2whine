@@ -1,34 +1,57 @@
 # cs2whine
 
-Real-time CS2 coaching via Game State Integration. Runs as a Windows exe (PyInstaller).
+Real-time CS2 coaching via Game State Integration. Python/Flask, ships as a
+Windows exe (PyInstaller).
+
+## Hard rules
+
+- **Never push to `main`/`master`.** Feature branch + PR, always. Open the PR,
+  report the URL, stop — **only the human merges.**
+- **Conventional Commits** (`feat:`, `fix:`, `chore:`, …). Never hand-bump a version.
+- **`pre-commit` is the gate.** Run `pre-commit run --files <changed>` before
+  declaring a change done, and report the result.
+- **`mise` provisions the toolchain** (`mise install`). New worktrees need `mise trust`.
+- Plan every non-trivial task. If the plan fails, restart planning.
 
 ## Workflow
 
-- **Never push directly to main** — branch protection enforced. Always feature branch + PR.
-- Conventional commits required: `feat:`, `fix:`, `chore:`, etc.
-- Auto-release triggers on merge to main (version bump based on commit prefixes).
-- Pre-commit hooks: ruff lint, ruff format, secret detection, conventional commits.
-
-## Dev setup
-
-- `mise install` for tooling (python 3.14, uv, gh, gitleaks)
-- `uv sync --group dev` for dependencies
-- Tests: `.venv/bin/python test_coaching.py` (plain scripts, not pytest)
-- Build: `uv run pyinstaller cs2whine.spec`
+Default branch is `main`, protected. Auto-release triggers on merge: the version
+bump is derived from commit prefixes and `__version__` is injected at build time
+by CI — never bump it by hand. Pre-commit runs ruff lint, ruff format, secret
+detection, and the conventional-commit check.
 
 ## Architecture
 
 - `gsi_server.py` — Flask HTTP server receiving CS2 GSI POST payloads
-- `coaching.py` — Stateful coaching engine: tracks rounds, detects patterns, emits tips
-- `notify.py` — Windows toast notifications via direct PowerShell (no winotify)
-- `setup_gsi.py` — Auto-installs/updates GSI config to CS2 cfg dir on launch
-- `updater.py` — Self-update from GitHub releases on startup (frozen exe only)
-- `config.py` — Loads config.json with defaults
-- `gamestate_integration_coach.cfg` — GSI config pushed to CS2; update `setup_gsi.py` comparison if format changes
+- `coaching.py` — stateful engine: tracks rounds, detects patterns, emits tips
+- `notify.py` — Windows toasts via direct PowerShell (no winotify)
+- `setup_gsi.py` — installs/updates the GSI config into the CS2 cfg dir on launch
+- `updater.py` — self-updates from GitHub releases on startup (frozen exe only)
+- `config.py` — loads `config.json` with defaults
+- `gamestate_integration_coach.cfg` — the GSI config pushed to CS2
 
-## Key details
+## Commands
 
-- GSI config is compared by content on launch and overwritten if changed
-- `__version__` in updater.py is injected at build time by CI (not manually bumped)
-- Notifications use `subprocess.run` calling PowerShell — errors print to console
-- All coaching tips are emitted once per round via `emitted_tips` set (cleared on new round)
+```bash
+mise install
+uv sync --group dev
+uv run python test_coaching.py     # plain assert scripts, NOT pytest — no -k selector
+uv run python test_console_log.py
+uv run pyinstaller cs2whine.spec   # build the Windows exe
+python simulate.py                 # exercise the engine without CS2 running
+pre-commit run --files <changed files>
+```
+
+## Gotchas
+
+- **Tests are plain scripts, not pytest.** Run a whole file; there is no test
+  selector.
+- The GSI config is compared by content on launch and overwritten if changed — if
+  its format changes, update the comparison in `setup_gsi.py`.
+- `__version__` in `updater.py` is injected at build time by CI, not committed.
+- Notifications shell out to PowerShell via `subprocess.run`; errors print to the
+  console rather than raising.
+- Coaching tips are emitted once per round via the `emitted_tips` set, cleared on
+  each new round.
+- `.claude/` is gitignored here on purpose. Personal, untracked notes belong in
+  `CLAUDE.local.md`; this file is the shared, tracked one.
