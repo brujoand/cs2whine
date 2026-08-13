@@ -39,7 +39,8 @@ uv run python test_coaching.py     # plain assert scripts, NOT pytest — no -k 
 uv run python test_console_log.py
 uv run pyinstaller cs2whine.spec   # build the Windows exe
 python simulate.py                 # exercise the engine without CS2 running
-pre-commit run --files <changed files>
+pre-commit run --files <changed files>   # NOT the commit-msg stage
+git config core.hooksPath .githooks      # once per clone: makes both gates live
 ```
 
 ## Gotchas

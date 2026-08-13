@@ -7,6 +7,22 @@ on:
     branches: [main]
 
 jobs:
+  # The hooks in .pre-commit-config.yaml ran only for whoever had them installed
+  # locally, so gitleaks was advisory -- a secret reached main whenever the
+  # author's hooks were not set up. This is what makes it a gate.
+  #
+  # No mise here on purpose: mise.toml pins python 3.14, which has no prebuilt
+  # for this runner and would be compiled from source for an interpreter this
+  # job never uses.
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
+
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
