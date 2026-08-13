@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Run the pre-commit gate on staged files.
+#
+# Tracked rather than installed. `git config core.hooksPath .githooks` makes
+# every hook in this directory live at once, so a fresh clone has no
+# `pre-commit install` step to forget -- and a gate that depends on being
+# remembered is not a gate.
+
+set -e
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+run_pre_commit run

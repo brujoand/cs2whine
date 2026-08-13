@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# Check the commit message against Conventional Commits.
+
+set -e
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+run_pre_commit run --hook-stage commit-msg --commit-msg-filename "$1"
